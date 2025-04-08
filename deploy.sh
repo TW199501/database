@@ -64,12 +64,6 @@ function firewall_toolkit() {
     function detect_firewall() {
   if command -v firewall-cmd &>/dev/null; then
     FIREWALL="firewalld"
-# 功能 2：執行防火牆腳本
-firewall_toolkit() {
-    detect_firewall() {
-    print_error "未偵測到已知防火牆（Firewalld 或 UFW）"
-    exit 1
-  fi
 }
 
 function firewall_is_active() {
