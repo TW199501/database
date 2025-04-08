@@ -479,10 +479,32 @@ optimize_storage() {
     echo "✅ 儲存系統優化作業完成！"
 }
 
+get_firewall_status() {
+  if command -v firewall-cmd &>/dev/null; then
+    FIREWALL_TYPE="Firewalld"
+    if sudo firewall-cmd --state &>/dev/null; then
+      FIREWALL_STATUS="✔ $FIREWALL_TYPE（已啟用）"
+    else
+      FIREWALL_STATUS="✘ $FIREWALL_TYPE（未啟用）"
+    fi
+  elif command -v ufw &>/dev/null; then
+    FIREWALL_TYPE="UFW"
+    if [[ $(sudo ufw status | grep -i inactive) == "" ]]; then
+      FIREWALL_STATUS="✔ $FIREWALL_TYPE（已啟用）"
+    else
+      FIREWALL_STATUS="✘ $FIREWALL_TYPE（未啟用）"
+    fi
+  else
+    FIREWALL_STATUS="✘ 未偵測到防火牆"
+  fi
+}
+
 # 主選單
 while true; do
     clear
+    get_firewall_status
     echo "==== 運維 Deploy 工具 ===="
+    echo -e "防火牆狀態：$FIREWALL_STATUS\n"
 # 主選單
 while true; do
     clear
