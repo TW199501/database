@@ -54,42 +54,59 @@ EOF
     echo "IPv6 已關閉。"
 }
 
-# 功能 2：執行防火牆腳本
-firewall_settings() {
-    echo "執行防火牆工具..."
-    firewall_toolkit
-}
-# 功能 2：執行防火牆腳本
-function firewall_toolkit() {
-    function detect_firewall() {
-  if command -v firewall-cmd &>/dev/null; then
-    FIREWALL="firewalld"
-}
+# 功能 2：防火牆設定功能
+firewall_toolkit() {
 
-function firewall_is_active() {
-  if [[ "$FIREWALL" == "firewalld" ]]; then
-    sudo firewall-cmd --state &>/dev/null
-  else
-    [[ $(sudo ufw status | grep -i inactive) == "" ]]
-  fi
-}
+  # ---------- UI ----------
+  print_title() {
+    echo -e "\n\e[1;36m🧱 $1\e[0m"
+  }
 
-# ---------- 功能選單 ----------
-function show_menu() {
-  echo ""
-  echo "請選擇操作項目（⚠ 第 5、6 項需先啟用防火牆）："
-  echo ""
-  echo "請選擇操作項目："
-  echo "1) 顯示防火牆狀態"
-  echo "2) 開啟防火牆"
-  echo "3) 關閉防火牆"
-  echo "4) 顯示已開放的 Port / Service"
-  echo "5) 開放 Port"
-  echo "6) 關閉 Port"
-  echo "7) 管理 ingress/egress 方向 (進階)"
-  echo "8) 封鎖內網某 IP 存取本機"
-  echo "0) 離開"
-}
+  print_success() {
+    echo -e "\e[1;32m✔ $1\e[0m"
+  }
+
+  print_warning() {
+    echo -e "\e[1;33m⚠ $1\e[0m"
+  }
+
+  print_error() {
+    echo -e "\e[1;31m✘ $1\e[0m"
+  }
+
+  # ---------- 偵測防火牆 ----------
+  detect_firewall() {
+    if command -v firewall-cmd &>/dev/null; then
+      FIREWALL="firewalld"
+    elif command -v ufw &>/dev/null; then
+      FIREWALL="ufw"
+    else
+      print_error "未偵測到已知防火牆（Firewalld 或 UFW）"
+      exit 1
+    fi
+  }
+
+  firewall_is_active() {
+    if [[ "$FIREWALL" == "firewalld" ]]; then
+      sudo firewall-cmd --state &>/dev/null
+    else
+      [[ $(sudo ufw status | grep -i inactive) == "" ]]
+    fi
+  }
+
+  show_menu() {
+    echo ""
+    echo "請選擇操作項目（⚠ 第 5、6 項需先啟用防火牆）："
+    echo "1) 顯示防火牆狀態"
+    echo "2) 開啟防火牆"
+    echo "3) 關閉防火牆"
+    echo "4) 顯示已開放的 Port / Service"
+    echo "5) 開放 Port"
+    echo "6) 關閉 Port"
+    echo "7) 管理 ingress/egress 方向 (進階)"
+    echo "8) 封鎖內網某 IP 存取本機"
+    echo "0) 離開"
+  }
 
 # ---------- 功能實作 ----------
 function show_status() {
@@ -494,7 +511,6 @@ while true; do
     get_firewall_status
     echo "==== 運維 Deploy 工具 ===="
     echo -e "防火牆狀態：$FIREWALL_STATUS\n"
-
     echo "1. 設定時區 + IP + 關閉 IPv6"
     echo "2. 防火牆設定（執行 firewall_toolkit）"
     echo "3. 安裝 Docker + Docker Compose"
@@ -513,7 +529,8 @@ while true; do
         4) setup_ssh_key_inline; read -p "按 Enter 鍵返回主選單..." ;;
         5) clean_system; read -p "按 Enter 鍵返回主選單..." ;;
         6) system_optimize; read -p "按 Enter 鍵返回主選單..." ;;
-        7) optimize_storage; read -p "按 Enter 鍵返回主選單...";;
+        7) optimize_storage; read -p "按 Enter 鍵返回主選單..." ;;
         0) echo "離開腳本。"; break ;;
         *) echo "無效選項，請重新輸入。"; sleep 2 ;;
     esac
+done
