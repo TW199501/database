@@ -1,0 +1,140 @@
+---
+- name: 部署 SQL Server 容器（含 Volume、初始化與驗證）
+  hosts: mssql_nodes
+  become: true
+
+  vars:
+    sa_password: "YourStrong!Passw0rd"
+    volume_dir: "/data/mssql"
+    init_script: "/data/mssql/init.sql"
+    log_path: "/data/mssql/deploy.log"
+    verify_script: "/data/mssql/verify.sql"
+
+  tasks:
+
+    - name: 安裝必要套件
+      apt:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+          - apt-transport-https
+        state: present
+        update_cache: yes
+
+    - name: 移除舊的 docker（若有）
+      apt:
+        name:
+          - docker
+          - docker.io
+          - docker-engine
+        state: absent
+        purge: yes
+      ignore_errors: yes
+
+    - name: 安裝 Docker GPG 金鑰
+      shell: |
+        mkdir -p /etc/apt/keyrings
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
+        gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+      args:
+        creates: /etc/apt/keyrings/docker.gpg
+
+    - name: 新增 Docker APT 套件來源
+      copy:
+        content: |
+          deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release | lower }} stable
+        dest: /etc/apt/sources.list.d/docker.list
+
+    - name: 安裝 Docker
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
+        state: latest
+        update_cache: yes
+
+    - name: 啟用 Docker
+      systemd:
+        name: docker
+        enabled: true
+        state: started
+
+    - name: 建立資料夾與部署目錄
+      file:
+        path: "{{ volume_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: 複製初始化 SQL 腳本
+      copy:
+        src: init.sql
+        dest: "{{ init_script }}"
+        mode: '0644'
+
+    - name: 啟動 SQL Server 容器
+      docker_container:
+        name: sql_server
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        state: started
+        restart_policy: unless-stopped
+        ports:
+          - "1433:1433"
+        env:
+          ACCEPT_EULA: "Y"
+          SA_PASSWORD: "{{ sa_password }}"
+        volumes:
+          - "{{ volume_dir }}:/var/opt/mssql"
+        healthcheck:
+          test: >
+            CMD /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P {{ sa_password }} -Q "SELECT 1"
+          interval: 30s
+          timeout: 10s
+          retries: 3
+
+    - name: 等待 SQL Server 1433 開放
+      wait_for:
+        host: "{{ inventory_hostname }}"
+        port: 1433
+        delay: 10
+        timeout: 60
+
+    - name: 執行初始化 SQL 腳本
+      shell: |
+        docker exec sql_server /opt/mssql-tools/bin/sqlcmd \
+          -S localhost -U sa -P "{{ sa_password }}" \
+          -i /var/opt/mssql/init.sql > /var/opt/mssql/deploy.log 2>&1
+      register: init_sql_result
+      changed_when: false
+
+    - name: 建立驗證 SQL 腳本
+      copy:
+        content: |
+          SELECT name FROM sys.databases WHERE name = 'mydb';
+        dest: "{{ verify_script }}"
+        mode: '0644'
+
+    - name: 執行驗證資料庫是否存在
+      shell: |
+        docker exec sql_server /opt/mssql-tools/bin/sqlcmd \
+          -S localhost -U sa -P "{{ sa_password }}" \
+          -i /var/opt/mssql/verify.sql >> /var/opt/mssql/deploy.log 2>&1
+      register: verify_result
+      changed_when: false
+
+    - name: 顯示驗證結果
+      debug:
+        msg: |
+          主機 {{ inventory_hostname }} 的驗證結果：
+          {{ verify_result.stdout }}
+
+    - name: 下載集中 Log 回本機
+      fetch:
+        src: "{{ log_path }}"
+        dest: "./logs/{{ inventory_hostname }}-deploy.log"
+        flat: yes

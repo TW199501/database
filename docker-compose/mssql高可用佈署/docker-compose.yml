@@ -1,0 +1,74 @@
+version: '3.9'
+
+services:
+  primary:
+    container_name: mssql-primary
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=Sql@admin123
+      - MSSQL_PID=Developer
+      - MSSQL_ENABLE_HADR=1
+    ports:
+      - "1433:1433"
+    volumes:
+      - primary-data:/var/opt/mssql
+      - hadr-cert:/var/opt/mssql/hadr_cert
+    networks:
+      mssqlnet:
+        ipv4_address: 192.168.25.101
+    hostname: mssql-primary
+
+  secondary1:
+    container_name: mssql-secondary1
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=Sql@admin123
+      - MSSQL_PID=Developer
+      - MSSQL_ENABLE_HADR=1
+    ports:
+      - "1434:1433"
+    volumes:
+      - secondary1-data:/var/opt/mssql
+      - hadr-cert:/var/opt/mssql/hadr_cert
+    networks:
+      mssqlnet:
+        ipv4_address: 192.168.25.102
+    hostname: mssql-secondary1
+
+  secondary2:
+    container_name: mssql-secondary2
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=Sql@admin123
+      - MSSQL_PID=Developer
+      - MSSQL_ENABLE_HADR=1
+    ports:
+      - "1435:1433"
+    volumes:
+      - secondary2-data:/var/opt/mssql
+      - hadr-cert:/var/opt/mssql/hadr_cert
+    networks:
+      mssqlnet:
+        ipv4_address: 192.168.25.103
+    hostname: mssql-secondary2
+
+volumes:
+  primary-data:
+  secondary1-data:
+  secondary2-data:
+  hadr-cert:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/hadr_certs
+
+networks:
+  mssqlnet:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.25.0/24

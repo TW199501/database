@@ -1,0 +1,8 @@
+[mssql_nodes]
+sql1 ansible_host=192.168.25.50
+sql2 ansible_host=192.168.25.51
+sql3 ansible_host=192.168.25.52
+
+[all:vars]
+ansible_user=root
+ansible_python_interpreter=/usr/bin/python3
