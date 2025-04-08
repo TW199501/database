@@ -234,11 +234,6 @@ manage_directional_rule() {
   while true; do
     show_menu
     read -p "請輸入選項：" choice
-# ---------- 主流程 ----------
-  detect_firewall
-  while true; do
-    show_menu
-    read -p "請輸入選項：" choice
     case $choice in
       1) show_status ;;
       2) enable_firewall ;;
@@ -499,10 +494,7 @@ while true; do
     get_firewall_status
     echo "==== 運維 Deploy 工具 ===="
     echo -e "防火牆狀態：$FIREWALL_STATUS\n"
-# 主選單
-while true; do
-    clear
-    echo "==== 運維 Deploy 工具 ===="
+
     echo "1. 設定時區 + IP + 關閉 IPv6"
     echo "2. 防火牆設定（執行 firewall_toolkit）"
     echo "3. 安裝 Docker + Docker Compose"
