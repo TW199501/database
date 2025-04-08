@@ -56,35 +56,33 @@ EOF
 
 # 功能 2：防火牆設定功能
 firewall_toolkit() {
+    # ---------- UI ----------
+    print_title() { echo -e "\n\e[1;36m🧱 $1\e[0m"; }
+    print_success() { echo -e "\e[1;32m✔ $1\e[0m"; }
+    print_warning() { echo -e "\e[1;33m⚠ $1\e[0m"; }
+    print_error() { echo -e "\e[1;31m✘ $1\e[0m"; }
 
-  # ---------- UI ----------
-  print_title() {
-    echo -e "\n\e[1;36m🧱 $1\e[0m"
-  }
+    # ---------- 偵測防火牆 ----------
+    detect_firewall() {
+        if command -v firewall-cmd &>/dev/null; then
+            FIREWALL="firewalld"
+        elif command -v ufw &>/dev/null; then
+            FIREWALL="ufw"
+        else
+            print_error "未偵測到已知防火牆（Firewalld 或 UFW）"
+            exit 1
+        fi
+    }
 
-  print_success() {
-    echo -e "\e[1;32m✔ $1\e[0m"
-  }
-
-  print_warning() {
-    echo -e "\e[1;33m⚠ $1\e[0m"
-  }
-
-  print_error() {
-    echo -e "\e[1;31m✘ $1\e[0m"
-  }
-
-  # ---------- 偵測防火牆 ----------
-  detect_firewall() {
-    if command -v firewall-cmd &>/dev/null; then
-      FIREWALL="firewalld"
-    elif command -v ufw &>/dev/null; then
-      FIREWALL="ufw"
-    else
-      print_error "未偵測到已知防火牆（Firewalld 或 UFW）"
-      exit 1
-    fi
-  }
+    # ---------- 功能函數 ----------
+    show_status() {
+        print_title "防火牆狀態"
+        if [[ "$FIREWALL" == "firewalld" ]]; then
+            sudo firewall-cmd --state || print_warning "Firewalld 尚未啟用"
+        else
+            sudo ufw status verbose
+        fi
+    }
 
   firewall_is_active() {
     if [[ "$FIREWALL" == "firewalld" ]]; then
@@ -217,10 +215,10 @@ function manage_directional_rule() {
   read -p "請輸入要設定的 IP（通常為外網 IP）: " ip
   echo "請選擇封鎖方向："
   echo "1) 封鎖該 IP 存取本機（Ingress）"
-manage_directional_rule() {
-  print_title "管理 ingress / egress 方向封鎖"
-  read -p "請輸入要設定的 IP（通常為外網 IP）: " ip
-  echo "請選擇封鎖方向："
+  echo "2) 封鎖本機存取該 IP（Egress）"
+  echo "3) 同時封鎖 Ingress 與 Egress"
+  echo "4) 解除所有封鎖（Ingress / Egress）"
+  read -p "選擇操作（1-4）: " direction
   case $direction in
     1)
       sudo firewall-cmd --permanent --add-rich-rule="rule family=ipv4 source address=$ip drop"
@@ -244,29 +242,30 @@ manage_directional_rule() {
       print_warning "輸入錯誤，未執行任何操作"
       ;;
   esac
+  }
+    # ---------- 主流程 ----------
+    detect_firewall
+    while true; do
+        show_menu
+        read -p "請輸入選項：" choice
+        case $choice in
+            1) show_status ;;
+            2) enable_firewall ;;
+            3) disable_firewall ;;
+            4) show_open_ports ;;
+            5) open_ports ;;
+            6) close_ports ;;
+            7) manage_directional_rule ;;
+            8) block_internal_ip ;;
+            0) reload_firewall; echo "Bye!" && break ;;
+            *) print_warning "無效選項，請重新輸入。" ;;
+        esac
+        echo ""
+    done
+}   
 
-
-# ---------- 主流程 ----------
-  detect_firewall
-  while true; do
-    show_menu
-    read -p "請輸入選項：" choice
-    case $choice in
-      1) show_status ;;
-      2) enable_firewall ;;
-      3) disable_firewall ;;
-      4) show_open_ports ;;
-      5) open_ports ;;
-      6) close_ports ;;
-      7) manage_directional_rule ;;
-      8) block_internal_ip ;;
-      0) reload_firewall; echo "Bye!" && break ;;
-      *) print_warning "無效選項，請重新輸入。" ;;
-    esac
-    echo ""
-  done
-}
-}
+# 功能 3:docker檢查重新安裝
+docker_setup_and_install() {
     for pkg in docker.io docker-doc docker-compose docker-compose-v2 podman-docker containerd runc; do 
         sudo apt-get remove -y $pkg 
     done
@@ -371,118 +370,120 @@ clean_system() {
 
 # 功能6.效能優化（swappiness/ZRAM/CPU/BBR）
 system_optimize() {
-    echo "🚀 開始 VM 專用系統效能與穩定性優化..."
+  echo "🚀 開始 VM 專用系統效能與穩定性優化..."
 
-    # 1. 調整 swappiness（降低 swap 頻率）
-    echo "🧠 調整 vm.swappiness 為 10..."
-    sudo sysctl vm.swappiness=10
-    echo 'vm.swappiness=10' | sudo tee -a /etc/sysctl.conf
+# 1. 調整 swappiness（降低 swap 頻率）
+echo "🧠 調整 vm.swappiness 為 10..."
+sudo sysctl vm.swappiness=10
+echo 'vm.swappiness=10' | sudo tee -a /etc/sysctl.conf
 
-    # 2. 啟用 BBR 擁塞控制（若尚未啟用）
-    echo "🌐 啟用 TCP BBR 擁塞控制算法..."
-    sudo modprobe tcp_bbr
+echo "🌐 啟用 TCP BBR 擁塞控制算法..."
+sudo modprobe tcp_bbr
+echo "tcp_bbr" | sudo tee -a /etc/modules-load.d/modules.conf
+
+echo "🌐 啟用 TCP BBR 擁塞控制算法..."
+{
     echo "tcp_bbr" | sudo tee -a /etc/modules-load.d/modules.conf
+    echo "net.core.default_qdisc=fq"
+    echo "net.ipv4.tcp_congestion_control=bbr"
+} | sudo tee -a /etc/sysctl.conf >/dev/null
+sudo sysctl -p
+echo "✅ 擁塞控制算法：$(sysctl -n net.ipv4.tcp_congestion_control)"
 
-    sudo tee -a /etc/sysctl.conf <<EOF
+sysctl -n net.ipv4.tcp_congestion_control
+echo "✅ 擁塞控制算法：$(sysctl -n net.ipv4.tcp_congestion_control)"
+lsmod | grep tcp_bbr   
 
-    # 啟用 BBR
-    net.core.default_qdisc=fq
-    net.ipv4.tcp_congestion_control=bbr
-    EOF
-
-    sudo sysctl -p
-    echo "✅ 擁塞控制算法：$(sysctl -n net.ipv4.tcp_congestion_control)"
-
-    # 3. 停用不必要的服務（常見 VM 不需）
-    echo "🔕 停用無用服務：bluetooth, cups, avahi-daemon..."
-    for svc in bluetooth cups avahi-daemon ModemManager; do
+# 3. 停用不必要的服務（常見 VM 不需）
+echo "🔕 停用無用服務：bluetooth, cups, avahi-daemon..."
+for svc in bluetooth cups avahi-daemon ModemManager; do
         sudo systemctl disable --now $svc 2>/dev/null
-    done
+done
 
-    # 4. 可選關閉 snap（若無 GUI 需求）
-    if command -v snap &>/dev/null; then
-        echo "❌ 移除 snapd（可選）..."
-        sudo systemctl disable --now snapd.service
-        sudo apt purge -y snapd
-    fi
+# 4. 可選關閉 snap（若無 GUI 需求）
+if command -v snap &>/dev/null; then
+    echo "❌ 移除 snapd（可選）..."
+    sudo systemctl disable --now snapd.service
+    sudo apt purge -y snapd
+fi
 
-    # 5. 啟用自動安全更新（必要）
-    echo "🛡️ 啟用 unattended-upgrades（自動安全更新）..."
-    sudo apt install -y unattended-upgrades
-    sudo dpkg-reconfigure --priority=low unattended-upgrades
+# 5. 啟用自動安全更新（必要）
+echo "🛡️ 啟用 unattended-upgrades（自動安全更新）..."
+sudo apt install -y unattended-upgrades
+sudo dpkg-reconfigure --priority=low unattended-upgrades
 
-    # 6. 檢查 cron 與 logrotate 狀態
-    echo "🕓 確認 cron 與 logrotate 服務啟動中..."
-    sudo systemctl enable --now cron
-    sudo systemctl enable --now logrotate.timer
+# 6. 檢查 cron 與 logrotate 狀態
+echo "🕓 確認 cron 與 logrotate 服務啟動中..."
+sudo systemctl enable --now cron
+sudo systemctl enable --now logrotate.timer
 
-    # 7. 顯示當前系統記憶體與核心優化參數
-    echo ""
-    echo "📊 驗證系統優化參數："
-    sysctl vm.swappiness
-    sysctl net.ipv4.tcp_congestion_control
-    echo ""
-    echo "✅ VM 系統優化作業完成（建議重啟機器後再次確認）"
+# 7. 顯示當前系統記憶體與核心優化參數
+echo ""
+echo "📊 驗證系統優化參數："
+sysctl vm.swappiness
+sysctl net.ipv4.tcp_congestion_control
+echo ""
+echo "✅ VM 系統優化作業完成（建議重啟機器後再次確認）"
 }
 
 # 功能7.儲存系統優化（TRIM + I/O Scheduler）
 optimize_storage() {
-    echo "🚀 儲存系統優化作業開始..."
+  echo "🚀 儲存系統優化作業開始..."
 
-    echo "🔍 檢查是否為虛擬機..."
-    is_vm="false"
-    if grep -qEi '(hypervisor|kvm|vmware|virtualbox)' /proc/cpuinfo || hostnamectl | grep -qi "virtual"; then
-        is_vm="true"
-        echo "✅ 偵測為虛擬機，僅啟用 TRIM（略過 I/O 調度器設定）"
-    else
-        echo "✅ 偵測為實體機，執行完整優化（TRIM + I/O 調度器）"
-    fi
+  echo "🔍 檢查是否為虛擬機..."
+  is_vm="false"
+  if grep -qEi '(hypervisor|kvm|vmware|virtualbox)' /proc/cpuinfo || hostnamectl | grep -qi "virtual"; then
+      is_vm="true"
+      echo "✅ 偵測為虛擬機，僅啟用 TRIM（略過 I/O 調度器設定）"
+  else
+      echo "✅ 偵測為實體機，執行完整優化（TRIM + I/O 調度器）"
+  fi
 
-    echo "🔧 啟用 fstrim.timer..."
-    sudo systemctl enable --now fstrim.timer
-    systemctl status fstrim.timer --no-pager
+  echo "🔧 啟用 fstrim.timer..."
+  sudo systemctl enable --now fstrim.timer
+  systemctl status fstrim.timer --no-pager
 
-    if [[ "$is_vm" == "false" ]]; then
-        echo "📦 執行磁碟 I/O 調度器自動設定..."
+  if [[ "$is_vm" == "false" ]]; then
+      echo "📦 執行磁碟 I/O 調度器自動設定..."
 
-        UDEV_RULE="/etc/udev/rules.d/60-disk-ioscheduler.rules"
-        sudo bash -c "echo '# 自動設定磁碟調度器規則' > $UDEV_RULE"
+      UDEV_RULE="/etc/udev/rules.d/60-disk-ioscheduler.rules"
+      sudo bash -c "echo '# 自動設定磁碟調度器規則' > $UDEV_RULE"
 
-        for devpath in /sys/block/*; do
-            dev=$(basename "$devpath")
-            [[ $dev == loop* || $dev == ram* ]] && continue
-            devfile="/dev/$dev"
+      for devpath in /sys/block/*; do
+          dev=$(basename "$devpath")
+          [[ $dev == loop* || $dev == ram* ]] && continue
+          devfile="/dev/$dev"
 
-            if [[ $dev == nvme* ]]; then
-                scheduler="none"
-                echo "💡 偵測到 NVMe 裝置 $dev，設定 scheduler 為 $scheduler"
-            else
-                rotational=$(cat "$devpath/queue/rotational")
-                if [[ "$rotational" == "0" ]]; then
-                    scheduler="kyber"
-                    echo "💡 偵測到 SSD 裝置 $dev，設定 scheduler 為 $scheduler"
-                else
-                    scheduler="mq-deadline"
-                    echo "💡 偵測到 HDD 裝置 $dev，設定 scheduler 為 $scheduler"
-                fi
+          if [[ $dev == nvme* ]]; then
+              scheduler="none"
+              echo "💡 偵測到 NVMe 裝置 $dev，設定 scheduler 為 $scheduler"
+          else
+             rotational=$(cat "$devpath/queue/rotational")
+              if [[ "$rotational" == "0" ]]; then
+                  scheduler="kyber"
+                  echo "💡 偵測到 SSD 裝置 $dev，設定 scheduler 為 $scheduler"
+              else
+                  scheduler="mq-deadline"
+                  echo "💡 偵測到 HDD 裝置 $dev，設定 scheduler 為 $scheduler"
+              fi
             fi
 
-            echo "ACTION==\"add|change\", KERNEL==\"$dev\", ATTR{queue/scheduler}=\"$scheduler\"" | sudo tee -a "$UDEV_RULE" > /dev/null
-        done
+          echo "ACTION==\"add|change\", KERNEL==\"$dev\", ATTR{queue/scheduler}=\"$scheduler\"" | sudo tee -a "$UDEV_RULE" > /dev/null
+      done
 
-        echo "🔁 重新載入 udev 規則並觸發裝置..."
-        sudo udevadm control --reload-rules
-        sudo udevadm trigger
+      echo "🔁 重新載入 udev 規則並觸發裝置..."
+      sudo udevadm control --reload-rules
+      sudo udevadm trigger
     fi
 
-    echo "📊 當前磁碟 I/O 調度器狀態："
-    for devpath in /sys/block/*/queue/scheduler; do
-        dev=$(basename "$(dirname "$devpath")")
-        sched=$(cat "$devpath")
-        echo "  $dev : $sched"
-    done
+  echo "📊 當前磁碟 I/O 調度器狀態："
+  for devpath in /sys/block/*/queue/scheduler; do
+      dev=$(basename "$(dirname "$devpath")")
+      sched=$(cat "$devpath")
+      echo "  $dev : $sched"
+  done
 
-    echo "✅ 儲存系統優化作業完成！"
+  echo "✅ 儲存系統優化作業完成！"
 }
 
 get_firewall_status() {
