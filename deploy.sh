@@ -2,11 +2,34 @@
 
 # 功能 1：設定時區 + IP + 關閉 IPv6
 set_timezone_and_network() {
+    echo "🔍 目前的時區設定為：$(timedatectl show --property=Timezone --value)"
     echo "設定時區為 Asia/Taipei..."
     timedatectl set-timezone Asia/Taipei
     echo "完成時區設定。"
-
     echo ""
+    
+    echo "🔍 目前的網路介面與 IP 設定如下："
+    ip -4 addr show | awk '
+    /^[0-9]+: / {
+        split($2, iface, ":");
+        iface_name=iface[1];
+        up_status=($3 == "UP," ? "🟢 UP" : "🔴 DOWN");
+    }
+    /inet / {
+        ip_address=$2;
+        printf "  ➤ %s (%s)\n      IPv4: %s\n", iface_name, up_status, ip_address;
+    }'
+    echo ""
+
+    # 檢查 IP 是否已被使用
+    CHECK_IP=$(echo $IPADDR | cut -d/ -f1)
+    echo "🔍 檢查 IP 是否已存在：$CHECK_IP..."
+    if ping -c 2 -W 1 "$CHECK_IP" > /dev/null; then
+        echo "❌ 該 IP 位址已被使用，請選擇其他 IP！"
+        return 1
+    else
+        echo "✅ 該 IP 尚未被使用，可安全設定。"
+    fi
     echo "開始設定 IP..."
     read -p "請輸入網卡名稱（例如：eth0）: " IFACE
     if [[ -z "$IFACE" ]]; then
