@@ -1,4 +1,0 @@
-USE master;
-GO
-CREATE DATABASE mydb;
-GO
