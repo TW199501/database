@@ -2,46 +2,46 @@
 
 # 功能 1：設定時區 + IP + 關閉 IPv6
 set_timezone_and_network() {
-    echo "🔍 目前的時區設定為：$(timedatectl show --property=Timezone --value)"
-    echo "設定時區為 Asia/Taipei..."
-    timedatectl set-timezone Asia/Taipei
-    echo "完成時區設定。"
-    echo ""
-    
-    echo "🔍 目前的網路介面與 IP 設定如下："
-    ip -4 addr show | awk '
-    /^[0-9]+: / {
-        split($2, iface, ":");
-        iface_name=iface[1];
-        up_status=($3 == "UP," ? "🟢 UP" : "🔴 DOWN");
-    }
-    /inet / {
-        ip_address=$2;
-        printf "  ➤ %s (%s)\n      IPv4: %s\n", iface_name, up_status, ip_address;
-    }'
-    echo ""
+  echo "🔍 目前的時區設定為：$(timedatectl show --property=Timezone --value)"
+  echo "設定時區為 Asia/Taipei..."
+  timedatectl set-timezone Asia/Taipei
+  echo "完成時區設定。"
+  echo ""
+  
+  echo "🔍 目前的網路介面與 IP 設定如下："
+  ip -4 addr show | awk '
+  /^[0-9]+: / {
+      split($2, iface, ":");
+      iface_name=iface[1];
+      up_status=($3 == "UP," ? "🟢 UP" : "🔴 DOWN");
+  }
+  /inet / {
+      ip_address=$2;
+      printf "  ➤ %s (%s)\n      IPv4: %s\n", iface_name, up_status, ip_address;
+  }'
+  echo ""
 
-    # 檢查 IP 是否已被使用
-    CHECK_IP=$(echo $IPADDR | cut -d/ -f1)
-    echo "🔍 檢查 IP 是否已存在：$CHECK_IP..."
-    if ping -c 2 -W 1 "$CHECK_IP" > /dev/null; then
-        echo "❌ 該 IP 位址已被使用，請選擇其他 IP！"
-        return 1
-    else
-        echo "✅ 該 IP 尚未被使用，可安全設定。"
-    fi
-    echo "開始設定 IP..."
-    read -p "請輸入網卡名稱（例如：eth0）: " IFACE
-    if [[ -z "$IFACE" ]]; then
-        echo "網卡名稱不能為空！"
-        return 1
-    fi
-    read -p "請輸入靜態 IP（例如：192.168.1.100/24）: " IPADDR
-    read -p "請輸入閘道（Gateway，例如：192.168.1.1）: " GATEWAY
-    read -p "請輸入 DNS（例如：8.8.8.8）: " DNS
+  # 檢查 IP 是否已被使用
+  CHECK_IP=$(echo $IPADDR | cut -d/ -f1)
+  echo "🔍 檢查 IP 是否已存在：$CHECK_IP..."
+  if ping -c 2 -W 1 "$CHECK_IP" > /dev/null; then
+      echo "❌ 該 IP 位址已被使用，請選擇其他 IP！"
+      return 1
+  else
+      echo "✅ 該 IP 尚未被使用，可安全設定。"
+  fi
+  echo "開始設定 IP..."
+  read -p "請輸入網卡名稱（例如：eth0）: " IFACE
+  if [[ -z "$IFACE" ]]; then
+      echo "網卡名稱不能為空！"
+      return 1
+  fi
+  read -p "請輸入靜態 IP（例如：192.168.1.100/24）: " IPADDR
+  read -p "請輸入閘道（Gateway，例如：192.168.1.1）: " GATEWAY
+  read -p "請輸入 DNS（例如：8.8.8.8）: " DNS
 
-    echo "建立 netplan 設定檔..."
-    cat <<EOF > /etc/netplan/01-deploy.yaml
+  echo "建立 netplan 設定檔..."
+  cat <<EOF > /etc/netplan/01-deploy.yaml
 network:
   version: 2
   ethernets:
@@ -53,28 +53,28 @@ network:
         addresses: [$DNS]
 EOF
 
-    echo "套用 netplan 設定..."
-    netplan apply
-    if [ $? -ne 0 ]; then
-        echo "⚠️ IP 設定失敗，請檢查網卡名稱或其他設定。"
-        return 1
-    fi
-    echo "IP 設定完成。"
+  echo "套用 netplan 設定..."
+  netplan apply
+  if [ $? -ne 0 ]; then
+      echo "⚠️ IP 設定失敗，請檢查網卡名稱或其他設定。"
+      return 1
+  fi
+  echo "IP 設定完成。"
 
-    echo ""
-    echo "關閉 IPv6..."
-    if ! grep -q "disable_ipv6" /etc/sysctl.conf; then
-        cat <<EOF >> /etc/sysctl.conf
+  echo ""
+  echo "關閉 IPv6..."
+  if ! grep -q "disable_ipv6" /etc/sysctl.conf; then
+      cat <<EOF >> /etc/sysctl.conf
 
 # 關閉 IPv6
 net.ipv6.conf.all.disable_ipv6 = 1
 net.ipv6.conf.default.disable_ipv6 = 1
 net.ipv6.conf.lo.disable_ipv6 = 1
 EOF
-    fi
+  fi
 
-    sysctl -p
-    echo "IPv6 已關閉。"
+  sysctl -p
+  echo "IPv6 已關閉。"
 }
 
 # 功能 2：防火牆設定功能
