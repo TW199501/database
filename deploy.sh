@@ -7,7 +7,7 @@ set_timezone_and_network() {
   timedatectl set-timezone Asia/Taipei
   echo "完成時區設定。"
   echo ""
-  
+
   echo "🔍 目前的網路介面與 IP 設定如下："
   ip -4 addr show | awk '
   /^[0-9]+: / {
@@ -21,6 +21,20 @@ set_timezone_and_network() {
   }'
   echo ""
 
+  read -p "請輸入網卡名稱（例如：eth0）: " IFACE
+  if [[ -z "$IFACE" ]]; then
+      echo "❌ 網卡名稱不能為空！"
+      return 1
+  fi
+
+  read -p "請輸入靜態 IP（例如：192.168.25.70/24 或 192.168.25.70）: " IPADDR_RAW
+  # 自動補上 /24（若沒輸入 CIDR）
+  if [[ "$IPADDR_RAW" != */* ]]; then
+    IPADDR="$IPADDR_RAW/24"
+  else
+    IPADDR="$IPADDR_RAW"
+  fi
+
   # 檢查 IP 是否已被使用
   CHECK_IP=$(echo $IPADDR | cut -d/ -f1)
   echo "🔍 檢查 IP 是否已存在：$CHECK_IP..."
@@ -30,28 +44,36 @@ set_timezone_and_network() {
   else
       echo "✅ 該 IP 尚未被使用，可安全設定。"
   fi
-  echo "開始設定 IP..."
-  read -p "請輸入網卡名稱（例如：eth0）: " IFACE
-  if [[ -z "$IFACE" ]]; then
-      echo "網卡名稱不能為空！"
-      return 1
-  fi
-  read -p "請輸入靜態 IP（例如：192.168.1.100/24）: " IPADDR
-  read -p "請輸入閘道（Gateway，例如：192.168.1.1）: " GATEWAY
-  read -p "請輸入 DNS（例如：8.8.8.8）: " DNS
 
-  echo "建立 netplan 設定檔..."
-  cat <<EOF > /etc/netplan/01-deploy.yaml
+  read -p "請輸入閘道（Gateway，例如：192.168.25.1，可空白預設為第一段 .1）: " GATEWAY
+  if [[ -z "$GATEWAY" ]]; then
+    GATEWAY="$(echo $CHECK_IP | awk -F. '{print $1"."$2"."$3".1"}')"
+    echo "📌 使用預設閘道：$GATEWAY"
+  fi
+
+  read -p "請輸入 DNS（預設為 168.95.1.1 8.8.8.8 1.1.1.1，可空白或逗號）: " DNS
+  if [[ -z "$DNS" ]]; then
+    DNS="168.95.1.1,8.8.8.8,1.1.1.1"
+  else
+    DNS=$(echo "$DNS" | tr ' ' ',')
+  fi
+
+  echo "建立 netplan 設定檔（使用 routes 替代 gateway4）..."
+  cat <<EOF > /etc/netplan/50-cloud-init.yaml
 network:
   version: 2
   ethernets:
     $IFACE:
       dhcp4: no
       addresses: [$IPADDR]
-      gateway4: $GATEWAY
       nameservers:
         addresses: [$DNS]
+      routes:
+        - to: default
+          via: $GATEWAY
 EOF
+
+  chmod 600 /etc/netplan/50-cloud-init.yaml
 
   echo "套用 netplan 設定..."
   netplan apply
@@ -59,7 +81,7 @@ EOF
       echo "⚠️ IP 設定失敗，請檢查網卡名稱或其他設定。"
       return 1
   fi
-  echo "IP 設定完成。"
+  echo "✅ IP 設定完成。"
 
   echo ""
   echo "關閉 IPv6..."
@@ -74,8 +96,18 @@ EOF
   fi
 
   sysctl -p
-  echo "IPv6 已關閉。"
+  echo "🛑 IPv6 已關閉。"
 }
+
+  echo "🔍 檢查 IPv6 是否已關閉..."
+  if [[ $(sysctl net.ipv6.conf.all.disable_ipv6 | grep -i "1") ]]; then
+      echo "✅ IPv6 已成功關閉。"
+  else
+      echo "❌ IPv6 關閉失敗，請檢查設定。"
+  fi
+
+  echo "所有設定完成！"
+
 
 # 功能 2：防火牆設定功能
 firewall_toolkit() {
