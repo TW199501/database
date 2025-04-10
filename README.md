@@ -1,6 +1,6 @@
 
 
-
+### 結構說明
 ```
 📁 database/
 ├── 📁 metadata/
@@ -23,6 +23,7 @@
 │   └── initial_metadata_data.sql
 ├── 📁 tests/
 │   └── check_metadata_consistency.sql
+
 ```
 
 ---

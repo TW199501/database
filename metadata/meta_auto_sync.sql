@@ -7,7 +7,7 @@
 建立者: 楊清雲（@eddie）
 適用環境: SQL Server 2022 - ELF 資料庫
 ==============================================
-### ✅ 含以下元件：
+### 含以下元件
 |`trg_AuditTableCreation`      | 建表即時記錄來源與說明 |
 |`sp_sync_tables`              | 從 `sys.tables` 補錄歷史表 |
 |`sp_sync_table_columns`       | 同步欄位結構（PK、預設、型別、索引） |
@@ -24,7 +24,7 @@ EXEC sp_sync_column_descriptions;
 */
 
 -- ================================================
--- 📌 觸發器：建立資料表觸發器
+-- 觸發器：建立資料表觸發器
 -- ================================================
 
 IF EXISTS (
@@ -69,9 +69,10 @@ BEGIN
     END
 END;
 GO
--- ================================================
--- 📌 預存程序：同步 schematables 表資料
--- ================================================
+
+-- ====================================================
+-- 預存程序：同步 schematables 表資料(接受任何來源定序)
+-- ====================================================
 IF OBJECT_ID('sp_sync_tables', 'P') IS NOT NULL
     DROP PROCEDURE sp_sync_tables;
 GO
@@ -83,22 +84,26 @@ BEGIN
 
     INSERT INTO schema_tables (table_schema, table_name, table_description)
     SELECT
-        s.name, t.name,
+        s.name COLLATE Latin1_General_100_CI_AS_SC_UTF8, 
+        t.name COLLATE Latin1_General_100_CI_AS_SC_UTF8,
         ISNULL(CAST(ep.value AS NVARCHAR(500)), N'（補錄）存在於系統但未由觸發器建立')
+           COLLATE Latin1_General_100_CI_AS_SC_UTF8
     FROM sys.tables t
     JOIN sys.schemas s ON t.schema_id = s.schema_id
     LEFT JOIN sys.extended_properties ep 
         ON ep.major_id = t.object_id AND ep.name = 'MS_Description' AND ep.minor_id = 0
     WHERE NOT EXISTS (
         SELECT 1 FROM schema_tables m
-        WHERE m.table_schema = s.name AND m.table_name = t.name
+        WHERE 
+            m.table_schema = s.name COLLATE Latin1_General_100_CI_AS_SC_UTF8 AND
+            m.table_name = t.name COLLATE Latin1_General_100_CI_AS_SC_UTF8
     );
 END;
 GO
 
--- ================================================
--- 📌 預存程序：同步 schema_foreign_keys 外鍵資料
--- ================================================
+-- =============================================================
+-- 預存程序：同步 schema_foreign_keys 外鍵資料(接受任何來源定序)
+-- =============================================================
 IF OBJECT_ID('sp_sync_foreign_keys', 'P') IS NOT NULL DROP PROCEDURE sp_sync_foreign_keys;
 GO
 CREATE PROCEDURE sp_sync_foreign_keys
@@ -111,8 +116,13 @@ BEGIN
         on_delete_action, on_update_action
     )
     SELECT
-        fk.name, sch1.name, tab1.name, col1.name,
-        sch2.name, tab2.name, col2.name,
+        fk.name COLLATE Latin1_General_100_CI_AS_SC_UTF8, 
+        sch1.name COLLATE Latin1_General_100_CI_AS_SC_UTF8, 
+        tab1.name COLLATE Latin1_General_100_CI_AS_SC_UTF8, 
+        col1.name COLLATE Latin1_General_100_CI_AS_SC_UTF8,
+        sch2.name COLLATE Latin1_General_100_CI_AS_SC_UTF8, 
+        tab2.name COLLATE Latin1_General_100_CI_AS_SC_UTF8, 
+        col2.name COLLATE Latin1_General_100_CI_AS_SC_UTF8,
         'NO ACTION', 'NO ACTION'
     FROM sys.foreign_keys fk
     JOIN sys.foreign_key_columns fkc ON fk.object_id = fkc.constraint_object_id
@@ -123,14 +133,15 @@ BEGIN
     JOIN sys.schemas sch2 ON tab2.schema_id = sch2.schema_id
     JOIN sys.columns col2 ON tab2.object_id = col2.object_id AND fkc.referenced_column_id = col2.column_id
     WHERE NOT EXISTS (
-        SELECT 1 FROM schema_foreign_keys m WHERE m.constraint_name = fk.name
+        SELECT 1 FROM schema_foreign_keys m 
+        WHERE m.constraint_name = fk.name COLLATE Latin1_General_100_CI_AS_SC_UTF8
     );
 END;
 GO
 
--- ================================================
--- 📌 sp_sync_table_columns（防止主鍵衝突）
--- ================================================
+-- =======================================================
+-- sp_sync_table_columns（防止主鍵衝突）(接受任何來源定序)
+-- =======================================================
 
 IF OBJECT_ID('sp_sync_table_columns', 'P') IS NOT NULL
     DROP PROCEDURE sp_sync_table_columns;
@@ -146,7 +157,10 @@ BEGIN
         is_nullable, column_default, is_primary_key, is_unique, is_indexed, column_description
     )
     SELECT DISTINCT
-        s.name, t.name, c.name, c.column_id,
+        s.name COLLATE Latin1_General_100_CI_AS_SC_UTF8,
+        t.name COLLATE Latin1_General_100_CI_AS_SC_UTF8, 
+        c.name COLLATE Latin1_General_100_CI_AS_SC_UTF8, 
+        c.column_id,
         TYPE_NAME(c.system_type_id) + 
             CASE 
                 WHEN TYPE_NAME(c.system_type_id) IN ('varchar','nvarchar','char','nchar') 
@@ -182,16 +196,17 @@ BEGIN
     ) ix ON c.object_id = ix.object_id AND c.column_id = ix.column_id
     WHERE NOT EXISTS (
         SELECT 1 FROM schema_columns m
-        WHERE m.table_schema = s.name AND m.table_name = t.name AND m.column_name = c.name
+        WHERE 
+           m.table_schema = s.name COLLATE Latin1_General_100_CI_AS_SC_UTF8 AND 
+           m.table_name = t.name COLLATE Latin1_General_100_CI_AS_SC_UTF8 AND 
+           m.column_name = c.name COLLATE Latin1_General_100_CI_AS_SC_UTF8
     );
 END;
 GO
 
-
-
--- ================================================
--- 📌 預存程序：補入 schema_columns 的 MS_Description 描述
--- ================================================
+-- ==========================================================================
+-- 預存程序：描述schema_columns 尚未寫入或者更新 MS_Description(接受任何來源定序)
+-- ==========================================================================
 
 IF OBJECT_ID('sp_sync_column_descriptions', 'P') IS NOT NULL
     DROP PROCEDURE sp_sync_column_descriptions;
@@ -215,9 +230,13 @@ BEGIN
     JOIN sys.schemas s 
         ON t.schema_id = s.schema_id
     WHERE 
-        c.table_schema = s.name
-        AND c.table_name = t.name
-        AND c.column_name = sc.name;
+        c.table_schema = s.name COLLATE Latin1_General_100_CI_AS_SC_UTF8 AND
+        c.table_name = t.name COLLATE Latin1_General_100_CI_AS_SC_UTF8 AND
+        c.column_name = sc.name COLLATE Latin1_General_100_CI_AS_SC_UTF8 AND
+        (
+            c.column_description IS NULL OR 
+            c.column_description <> CAST(ep.value AS NVARCHAR(1000))
+        );
 END;
 GO
 
