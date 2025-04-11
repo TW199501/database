@@ -1,13 +1,27 @@
 #!/bin/bash
 
-# 功能 1：設定時區 + IP + 關閉 IPv6
-set_timezone_and_network() {
-  echo "🔍 目前的時區設定為：$(timedatectl show --property=Timezone --value)"
-  echo "設定時區為 Asia/Taipei..."
-  timedatectl set-timezone Asia/Taipei
-  echo "完成時區設定。"
-  echo ""
+get_firewall_status() {
+  if command -v firewall-cmd &>/dev/null; then
+    FIREWALL_TYPE="Firewalld"
+    if sudo firewall-cmd --state &>/dev/null; then
+      FIREWALL_STATUS="✔ $FIREWALL_TYPE（已啟用）"
+    else
+      FIREWALL_STATUS="✘ $FIREWALL_TYPE（未啟用）"
+    fi
+  elif command -v ufw &>/dev/null; then
+    FIREWALL_TYPE="UFW"
+    if [[ $(sudo ufw status | grep -i inactive) == "" ]]; then
+      FIREWALL_STATUS="✔ $FIREWALL_TYPE（已啟用）"
+    else
+      FIREWALL_STATUS="✘ $FIREWALL_TYPE（未啟用）"
+    fi
+  else
+    FIREWALL_STATUS="✘ 未偵測到防火牆"
+  fi
+}
 
+# 功能 1：IP 
+set_ip() {
   echo "🔍 目前的網路介面與 IP 設定如下："
   ip -4 addr show | awk '
   /^[0-9]+: / {
@@ -83,33 +97,9 @@ EOF
   fi
   echo "✅ IP 設定完成。"
 
-  echo ""
-  echo "關閉 IPv6..."
-  if ! grep -q "disable_ipv6" /etc/sysctl.conf; then
-      cat <<EOF >> /etc/sysctl.conf
-
-# 關閉 IPv6
-net.ipv6.conf.all.disable_ipv6 = 1
-net.ipv6.conf.default.disable_ipv6 = 1
-net.ipv6.conf.lo.disable_ipv6 = 1
-EOF
-  fi
-
-  sysctl -p
-  echo "🛑 IPv6 已關閉。"
 }
 
-  echo "🔍 檢查 IPv6 是否已關閉..."
-  if [[ $(sysctl net.ipv6.conf.all.disable_ipv6 | grep -i "1") ]]; then
-      echo "✅ IPv6 已成功關閉。"
-  else
-      echo "❌ IPv6 關閉失敗，請檢查設定。"
-  fi
-
-  echo "所有設定完成！"
-
-
-# 功能 2：防火牆設定功能
+# 功能 2 ：防火牆設定
 firewall_toolkit() {
     # ---------- UI ----------
     print_title() { echo -e "\n\e[1;36m🧱 $1\e[0m"; }
@@ -129,178 +119,200 @@ firewall_toolkit() {
         fi
     }
 
-    # ---------- 功能函數 ----------
-    show_status() {
-        print_title "防火牆狀態"
+    # ---------- 防火牆狀態檢查 ----------
+    firewall_is_active() {
         if [[ "$FIREWALL" == "firewalld" ]]; then
-            sudo firewall-cmd --state || print_warning "Firewalld 尚未啟用"
+            if sudo firewall-cmd --state &>/dev/null; then
+                return 0
+            else
+                print_warning "✘ Firewalld 尚未啟用"
+                return 1
+            fi
         else
-            sudo ufw status verbose
+            status=$(sudo ufw status | grep -i "Status: inactive")
+            if [[ -n "$status" ]]; then
+                print_warning "✘ UFW 尚未啟用"
+                return 1
+            else
+                return 0
+            fi
         fi
     }
 
-  firewall_is_active() {
-    if [[ "$FIREWALL" == "firewalld" ]]; then
-      sudo firewall-cmd --state &>/dev/null
-    else
-      [[ $(sudo ufw status | grep -i inactive) == "" ]]
-    fi
-  }
-
-  show_menu() {
-    echo ""
-    echo "請選擇操作項目（⚠ 第 5、6 項需先啟用防火牆）："
-    echo "1) 顯示防火牆狀態"
-    echo "2) 開啟防火牆"
-    echo "3) 關閉防火牆"
-    echo "4) 顯示已開放的 Port / Service"
-    echo "5) 開放 Port"
-    echo "6) 關閉 Port"
-    echo "7) 管理 ingress/egress 方向 (進階)"
-    echo "8) 封鎖內網某 IP 存取本機"
-    echo "0) 離開"
-  }
-
-# ---------- 功能實作 ----------
-function show_status() {
-  print_title "防火牆狀態"
-  if [[ "$FIREWALL" == "firewalld" ]]; then
-    sudo firewall-cmd --state || print_warning "Firewalld 尚未啟用"
-  else
-    sudo ufw status verbose
-  fi
-}
-
-function enable_firewall() {
-  print_title "啟用防火牆"
-  if [[ "$FIREWALL" == "firewalld" ]]; then
-    sudo systemctl enable --now firewalld
-  else
-    sudo ufw enable
-  fi
-  print_success "防火牆已啟用"
-}
-
-function disable_firewall() {
-  print_title "關閉防火牆"
-  if [[ "$FIREWALL" == "firewalld" ]]; then
-    sudo systemctl stop firewalld
-    sudo systemctl disable firewalld
-  else
-    sudo ufw disable
-  fi
-  print_success "防火牆已關閉"
-}
-
-function show_open_ports() {
-  print_title "已開放 Port 與 Service"
-  if ! firewall_is_active; then
-    print_warning "⚠ 防火牆尚未啟用，請先啟用防火牆（選項 2）再查看開放 port。"
-    return
-  fi
-  if [[ "$FIREWALL" == "firewalld" ]]; then
-    echo "🔥 Zone: $(sudo firewall-cmd --get-default-zone)"
-    sudo firewall-cmd --list-all
-  else
-    sudo ufw status numbered
-  fi
-}
-
-function open_ports() {
-  if ! firewall_is_active; then
-    print_warning "⚠ 防火牆尚未啟用，請先啟用防火牆（選項 2）再進行開放 port 操作。"
-    return
-  fi
-  read -p "請輸入要開放的 port（可多個，逗號分隔）:" input_ports
-  IFS=',' read -ra PORTS <<< "$input_ports"
-  for port in "${PORTS[@]}"; do
-    port=$(echo "$port" | xargs)
-    if [[ -n "$port" ]]; then
+    # ---------- 功能函數 ----------
+    show_status() {
+      print_title "防火牆狀態"
       if [[ "$FIREWALL" == "firewalld" ]]; then
-        sudo firewall-cmd --permanent --add-port=${port}/tcp
+        if sudo firewall-cmd --state &>/dev/null; then
+          print_success "✔ Firewalld（已啟用）"
+        else
+          print_warning "✘ Firewalld（未啟用）"
+        fi
       else
-        sudo ufw allow ${port}/tcp
+        ufw_output=$(sudo ufw status)
+        if echo "$ufw_output" | grep -iq "inactive"; then
+          print_warning "✘ UFW（未啟用）"
+        else
+          print_success "✔ UFW（已啟用）"
+          echo "$ufw_output"
+        fi
       fi
-      print_success "已開放 ${port}/tcp"
-    fi
-  done
-}
+    }
+    enable_firewall() {
+        print_title "啟用防火牆"
+        if [[ "$FIREWALL" == "firewalld" ]]; then
+            sudo systemctl enable --now firewalld
+        else
+            sudo ufw enable
+        fi
+        print_success "防火牆已啟用"
+    }
 
-function close_ports() {
-  if ! firewall_is_active; then
-    print_warning "⚠ 防火牆尚未啟用，請先啟用防火牆（選項 2）再進行關閉 port 操作。"
-    return
-  fi
-  read -p "請輸入要關閉的 port（可多個，逗號分隔）:" input_ports
-  IFS=',' read -ra PORTS <<< "$input_ports"
-  for port in "${PORTS[@]}"; do
-    port=$(echo "$port" | xargs)
-    if [[ -n "$port" ]]; then
-      if [[ "$FIREWALL" == "firewalld" ]]; then
-        sudo firewall-cmd --permanent --remove-port=${port}/tcp || true
-      else
-        sudo ufw delete allow ${port}/tcp || true
-      fi
-      print_success "已關閉 ${port}/tcp"
-    fi
-  done
-}
+    disable_firewall() {
+        print_title "關閉防火牆"
+        if [[ "$FIREWALL" == "firewalld" ]]; then
+            sudo systemctl stop firewalld
+            sudo systemctl disable firewalld
+        else
+            sudo ufw disable
+        fi
+        print_success "防火牆已關閉"
+    }
 
-function reload_firewall() {
-  print_title "重新載入防火牆設定..."
-  if ! firewall_is_active; then
-    print_warning "⚠ 防火牆尚未啟用，無需重載設定。"
-    return
-  fi
-  if [[ "$FIREWALL" == "firewalld" ]]; then
-    sudo firewall-cmd --reload
-  fi
-  print_success "設定已套用"
-}
+    show_open_ports() {
+        print_title "已開放 Port 與 Service"
+        if ! firewall_is_active; then
+            print_warning "⚠ 防火牆尚未啟用，請先啟用防火牆（選項 2）再查看開放 port。"
+            return
+        fi
+        if [[ "$FIREWALL" == "firewalld" ]]; then
+            echo "🔥 Zone: $(sudo firewall-cmd --get-default-zone)"
+            sudo firewall-cmd --list-all
+        else
+            sudo ufw status numbered
+        fi
+    }
 
-function block_internal_ip() {
-  print_title "封鎖內網某 IP 存取本機"
-  read -p "請輸入內網 IP（如 192.168.1.100）: " ip
-  sudo firewall-cmd --permanent --add-rich-rule="rule family=ipv4 source address=$ip drop"
-  print_success "已封鎖 $ip 存取本機"
-}
+    open_ports() {
+        if ! firewall_is_active; then
+            print_warning "⚠ 防火牆尚未啟用，請先啟用防火牆（選項 2）再進行開放 port 操作。"
+            return
+        fi
+        read -p "請輸入要開放的 port（可多個，逗號分隔）:" input_ports
+        IFS=',' read -ra PORTS <<< "$input_ports"
+        for port in "${PORTS[@]}"; do
+            port=$(echo "$port" | xargs)
+            if [[ -n "$port" ]]; then
+                if [[ "$FIREWALL" == "firewalld" ]]; then
+                    sudo firewall-cmd --permanent --add-port=${port}/tcp
+                else
+                    sudo ufw allow ${port}/tcp
+                fi
+                print_success "已開放 ${port}/tcp"
+            fi
+        done
+        reload_firewall
+    }
 
-function manage_directional_rule() {
-  print_title "管理 ingress / egress 方向封鎖"
-  read -p "請輸入要設定的 IP（通常為外網 IP）: " ip
-  echo "請選擇封鎖方向："
-  echo "1) 封鎖該 IP 存取本機（Ingress）"
-  echo "2) 封鎖本機存取該 IP（Egress）"
-  echo "3) 同時封鎖 Ingress 與 Egress"
-  echo "4) 解除所有封鎖（Ingress / Egress）"
-  read -p "選擇操作（1-4）: " direction
-  case $direction in
-    1)
-      sudo firewall-cmd --permanent --add-rich-rule="rule family=ipv4 source address=$ip drop"
-      print_success "已封鎖 $ip 存取本機 (Ingress)"
-      ;;
-    2)
-      sudo firewall-cmd --permanent --add-rich-rule="rule family=ipv4 destination address=$ip drop"
-      print_success "已封鎖本機存取 $ip (Egress)"
-      ;;
-    3)
-      sudo firewall-cmd --permanent --add-rich-rule="rule family=ipv4 source address=$ip drop"
-      sudo firewall-cmd --permanent --add-rich-rule="rule family=ipv4 destination address=$ip drop"
-      print_success "已完全封鎖 $ip 的 Ingress 與 Egress"
-      ;;
-    4)
-      sudo firewall-cmd --permanent --remove-rich-rule="rule family=ipv4 source address=$ip drop" || true
-      sudo firewall-cmd --permanent --remove-rich-rule="rule family=ipv4 destination address=$ip drop" || true
-      print_success "已解除對 $ip 的封鎖"
-      ;;
-    *)
-      print_warning "輸入錯誤，未執行任何操作"
-      ;;
-  esac
-  }
+    close_ports() {
+        if ! firewall_is_active; then
+            print_warning "⚠ 防火牆尚未啟用，請先啟用防火牆（選項 2）再進行關閉 port 操作。"
+            return
+        fi
+        read -p "請輸入要關閉的 port（可多個，逗號分隔）:" input_ports
+        IFS=',' read -ra PORTS <<< "$input_ports"
+        for port in "${PORTS[@]}"; do
+            port=$(echo "$port" | xargs)
+            if [[ -n "$port" ]]; then
+                if [[ "$FIREWALL" == "firewalld" ]]; then
+                    sudo firewall-cmd --permanent --remove-port=${port}/tcp || true
+                else
+                    sudo ufw delete allow ${port}/tcp || true
+                fi
+                print_success "已關閉 ${port}/tcp"
+            fi
+        done
+        reload_firewall
+    }
+
+    reload_firewall() {
+        print_title "重新載入防火牆設定..."
+        if ! firewall_is_active; then
+            print_warning "⚠ 防火牆尚未啟用，無需重載設定。"
+            return
+        fi
+        if [[ "$FIREWALL" == "firewalld" ]]; then
+            sudo firewall-cmd --reload
+        fi
+        print_success "設定已套用"
+    }
+
+    block_internal_ip() {
+        print_title "封鎖內網某 IP 存取本機"
+        if [[ "$FIREWALL" != "firewalld" ]]; then
+            print_warning "⚠ 此功能僅支援 firewalld，目前為 $FIREWALL"
+            return
+        fi
+        read -p "請輸入內網 IP（如 192.168.1.100）: " ip
+        sudo firewall-cmd --permanent --add-rich-rule="rule family=ipv4 source address=$ip drop"
+        print_success "已封鎖 $ip 存取本機"
+    }
+
+    manage_directional_rule() {
+        print_title "管理 ingress / egress 方向封鎖"
+        if [[ "$FIREWALL" != "firewalld" ]]; then
+            print_warning "⚠ 此功能僅支援 firewalld，目前為 $FIREWALL"
+            return
+        fi
+        read -p "請輸入要設定的 IP（通常為外網 IP）: " ip
+        echo "請選擇封鎖方向："
+        echo "1) 封鎖該 IP 存取本機（Ingress）"
+        echo "2) 封鎖本機存取該 IP（Egress）"
+        echo "3) 同時封鎖 Ingress 與 Egress"
+        echo "4) 解除所有封鎖（Ingress / Egress）"
+        read -p "選擇操作（1-4）: " direction
+        case $direction in
+            1)
+                sudo firewall-cmd --permanent --add-rich-rule="rule family=ipv4 source address=$ip drop"
+                print_success "已封鎖 $ip 存取本機 (Ingress)"
+                ;;
+            2)
+                sudo firewall-cmd --permanent --add-rich-rule="rule family=ipv4 destination address=$ip drop"
+                print_success "已封鎖本機存取 $ip (Egress)"
+                ;;
+            3)
+                sudo firewall-cmd --permanent --add-rich-rule="rule family=ipv4 source address=$ip drop"
+                sudo firewall-cmd --permanent --add-rich-rule="rule family=ipv4 destination address=$ip drop"
+                print_success "已完全封鎖 $ip 的 Ingress 與 Egress"
+                ;;
+            4)
+                sudo firewall-cmd --permanent --remove-rich-rule="rule family=ipv4 source address=$ip drop" || true
+                sudo firewall-cmd --permanent --remove-rich-rule="rule family=ipv4 destination address=$ip drop" || true
+                print_success "已解除對 $ip 的封鎖"
+                ;;
+            *)
+                print_warning "輸入錯誤，未執行任何操作"
+                ;;
+        esac
+        reload_firewall
+    }
+
     # ---------- 主流程 ----------
     detect_firewall
     while true; do
+        show_menu() {
+            echo ""
+            echo "請選擇操作項目（⚠ 第 5、6 項需先啟用防火牆）："
+            echo "1) 顯示防火牆狀態"
+            echo "2) 開啟防火牆"
+            echo "3) 關閉防火牆"
+            echo "4) 顯示已開放的 Port / Service"
+            echo "5) 開放 Port"
+            echo "6) 關閉 Port"
+            echo "7) 管理 ingress/egress 方向 (進階)"
+            echo "8) 封鎖內網某 IP 存取本機"
+            echo "0) 離開"
+        }
         show_menu
         read -p "請輸入選項：" choice
         case $choice in
@@ -317,7 +329,7 @@ function manage_directional_rule() {
         esac
         echo ""
     done
-}   
+}
 
 # 功能 3:docker檢查重新安裝
 docker_setup_and_install() {
@@ -481,6 +493,7 @@ echo ""
 echo "✅ VM 系統優化作業完成（建議重啟機器後再次確認）"
 }
 
+
 # 功能7.儲存系統優化（TRIM + I/O Scheduler）
 optimize_storage() {
   echo "🚀 儲存系統優化作業開始..."
@@ -541,51 +554,64 @@ optimize_storage() {
   echo "✅ 儲存系統優化作業完成！"
 }
 
-get_firewall_status() {
-  if command -v firewall-cmd &>/dev/null; then
-    FIREWALL_TYPE="Firewalld"
-    if sudo firewall-cmd --state &>/dev/null; then
-      FIREWALL_STATUS="✔ $FIREWALL_TYPE（已啟用）"
-    else
-      FIREWALL_STATUS="✘ $FIREWALL_TYPE（未啟用）"
-    fi
-  elif command -v ufw &>/dev/null; then
-    FIREWALL_TYPE="UFW"
-    if [[ $(sudo ufw status | grep -i inactive) == "" ]]; then
-      FIREWALL_STATUS="✔ $FIREWALL_TYPE（已啟用）"
-    else
-      FIREWALL_STATUS="✘ $FIREWALL_TYPE（未啟用）"
-    fi
+# 功能 8：設定時區+關閉 IPv6
+set_timezone_and_network() {
+  echo "🔍 目前的時區設定為：$(timedatectl show --property=Timezone --value)"
+  echo "設定時區為 Asia/Taipei..."
+  timedatectl set-timezone Asia/Taipei
+  echo "完成時區設定。"
+  echo ""
+  # 關閉 IPv6
+  GRUB_FILE="/etc/default/grub"
+  echo "🔧 關閉 IPv6 中..."
+  if grep -q '^GRUB_CMDLINE_LINUX=' "$GRUB_FILE"; then
+      sed -i 's/^GRUB_CMDLINE_LINUX="/GRUB_CMDLINE_LINUX="ipv6.disable=1 /' "$GRUB_FILE"
   else
-    FIREWALL_STATUS="✘ 未偵測到防火牆"
+      echo 'GRUB_CMDLINE_LINUX="ipv6.disable=1"' >> "$GRUB_FILE"
   fi
-}
 
+  echo "✅ 已將 'ipv6.disable=1' 寫入 GRUB 設定。"
+
+  echo "🚀 套用 GRUB 設定..."
+  update-grub
+
+  echo ""
+  read -p "⚠️ 要立即重新啟動以套用設定嗎？(y/N): " confirm
+  if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+      echo "🔁 即將重啟系統..."
+      reboot
+  else
+      echo "📝 請稍後自行執行 reboot 或下次開機後 IPv6 即會停用。"
+  fi
+  echo "✅ IPv6 關閉完成。"
+}
 # 主選單
 while true; do
     clear
     get_firewall_status
     echo "==== 運維 Deploy 工具 ===="
     echo -e "防火牆狀態：$FIREWALL_STATUS\n"
-    echo "1. 設定時區 + IP + 關閉 IPv6"
+    echo "1. 設定IP （靜態IP + 閘道 + DNS）"
     echo "2. 防火牆設定（執行 firewall_toolkit）"
     echo "3. 安裝 Docker + Docker Compose"
     echo "4. SSH 免密登入設定"
     echo "5. 系統垃圾清理 + 排程設定"
     echo "6. 效能優化（swappiness/ZRAM/CPU/BBR）"
     echo "7. 儲存系統優化（TRIM + I/O Scheduler）"
+    echo "8. 設定時區+關閉 IPv6"
     echo "0. 離開"
     echo "=========================="
     read -p "請選擇操作項目: " choice
 
     case $choice in
-        1) set_timezone_and_network; read -p "按 Enter 鍵返回主選單..." ;;
+        1) set_ip; read -p "按 Enter 鍵返回主選單..." ;;
         2) firewall_toolkit; read -p "按 Enter 鍵返回主選單..." ;;
         3) docker_setup_and_install; read -p "按 Enter 鍵返回主選單..." ;;
         4) setup_ssh_key_inline; read -p "按 Enter 鍵返回主選單..." ;;
         5) clean_system; read -p "按 Enter 鍵返回主選單..." ;;
         6) system_optimize; read -p "按 Enter 鍵返回主選單..." ;;
         7) optimize_storage; read -p "按 Enter 鍵返回主選單..." ;;
+        8) set_timezone_and_network; read -p "按 Enter 鍵返回主選單..." ;;
         0) echo "離開腳本。"; break ;;
         *) echo "無效選項，請重新輸入。"; sleep 2 ;;
     esac
