@@ -23,6 +23,17 @@
 │   └── initial_metadata_data.sql
 ├── 📁 tests/
 │   └── check_metadata_consistency.sql
+├── 📁 consolidation/            
+│   ├── 📁 customer/
+│   │   └── 📁 ddl/
+│   │       ├── 01_create_customer.sql
+│   │       ├── 02_create_customer_profile.sql
+│   │       └── 03_create_customer_login_log.sql
+│   │
+│   ├── 📁 package/
+│   │   └── 📁 ddl/
+│   │       ├── 01_create_package.sql
+│   │       └── 02_create_package_entry.sql
 
 ```
 
