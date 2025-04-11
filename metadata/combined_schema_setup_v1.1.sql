@@ -409,6 +409,7 @@ BEGIN
 END
 GO
 
+-- 建立 trigger + 自動補 schema_columns
 CREATE TRIGGER trg_AuditTableCreation
 ON DATABASE
 FOR CREATE_TABLE
@@ -438,9 +439,13 @@ BEGIN
     BEGIN
         INSERT INTO schema_tables (table_schema, table_name, table_description)
         VALUES (@schema, @table, @desc);
+
+        WAITFOR DELAY '00:00:01';
+        EXEC sp_sync_new_columns_only;
     END
 END;
 GO
+
 
 -- ====================================================
 -- 預存程序：同步 schematables 表資料(接受任何來源定序)
@@ -630,6 +635,53 @@ BEGIN
     EXEC sp_sync_column_descriptions;
 END;
 GO
+
+
+CREATE OR ALTER PROCEDURE sp_sync_new_columns_only
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    -- 暫存所有 schema_tables 裡定義的表，對應實際系統欄位（強制 collation 對齊為 schema_columns 的編碼）
+    WITH actual_columns AS (
+        SELECT 
+            s.name COLLATE Latin1_General_100_CI_AS_SC_UTF8 AS table_schema,
+            t.name COLLATE Latin1_General_100_CI_AS_SC_UTF8 AS table_name,
+            c.name COLLATE Latin1_General_100_CI_AS_SC_UTF8 AS column_name,
+            ty.name COLLATE Latin1_General_100_CI_AS_SC_UTF8 AS data_type,
+            c.column_id AS ordinal_position,
+            c.is_nullable,
+            dc.definition AS column_default
+        FROM sys.columns c
+        JOIN sys.tables t ON c.object_id = t.object_id
+        JOIN sys.schemas s ON t.schema_id = s.schema_id
+        JOIN sys.types ty ON c.user_type_id = ty.user_type_id
+        LEFT JOIN sys.default_constraints dc ON c.default_object_id = dc.object_id
+        WHERE t.is_ms_shipped = 0
+    )
+
+    -- 寫入尚未存在的欄位
+    INSERT INTO schema_columns (
+        table_schema, table_name, column_name, ordinal_position,
+        data_type, is_nullable, column_default
+    )
+    SELECT 
+        a.table_schema,
+        a.table_name,
+        a.column_name,
+        a.ordinal_position,
+        a.data_type,
+        a.is_nullable,
+        a.column_default
+    FROM actual_columns a
+    INNER JOIN schema_tables st 
+        ON st.table_schema = a.table_schema AND st.table_name = a.table_name
+    LEFT JOIN schema_columns sc 
+        ON sc.table_schema = a.table_schema AND sc.table_name = a.table_name AND sc.column_name = a.column_name
+    WHERE sc.column_name IS NULL;
+
+END;
+go
 
 
 -- ✅ 自動同步一次（可重複執行）
