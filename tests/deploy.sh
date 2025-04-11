@@ -1,5 +1,6 @@
 #!/bin/bash
 
+# 顯示目前防火牆的狀態
 get_firewall_status() {
   if command -v firewall-cmd &>/dev/null; then
     FIREWALL_TYPE="Firewalld"
@@ -20,7 +21,22 @@ get_firewall_status() {
   fi
 }
 
-# 功能 1：IP 
+# 檢查 IP 格式是否合法（範圍 0–255）
+is_valid_ip() {
+  local ip=$1
+  if [[ ! $ip =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+    return 1
+  fi
+  IFS='.' read -r a b c d <<< "$ip"
+  for octet in $a $b $c $d; do
+    if ((octet < 0 || octet > 255)); then
+      return 1
+    fi
+  done
+  return 0
+}
+
+# 功能 1：設定靜態 IP
 set_ip() {
   echo "🔍 目前的網路介面與 IP 設定如下："
   ip -4 addr show | awk '
@@ -35,45 +51,80 @@ set_ip() {
   }'
   echo ""
 
-  read -p "請輸入網卡名稱（例如：eth0）: " IFACE
-  if [[ -z "$IFACE" ]]; then
-      echo "❌ 網卡名稱不能為空！"
+  # 自動偵測第一張 UP 的網卡（排除 lo）
+  IFACE=$(ip -o link show up | awk -F: '!/lo/ {print $2; exit}' | tr -d ' ')
+  echo "📡 偵測網卡：$IFACE"
+
+  # 輸入並防呆檢查 IP
+  read -p "請輸入新的靜態 IP（例如：192.168.30.70 或加上 CIDR /24）: " IPADDR_RAW
+  IPADDR_RAW=$(echo "$IPADDR_RAW" | xargs)  # 移除空白
+  if [[ -z "$IPADDR_RAW" ]]; then
+      echo "❌ 輸入無效，IP 不可為空或空白"
       return 1
   fi
 
-  read -p "請輸入靜態 IP（例如：192.168.25.70/24 或 192.168.25.70）: " IPADDR_RAW
-  # 自動補上 /24（若沒輸入 CIDR）
+  # 自動補上 /24
   if [[ "$IPADDR_RAW" != */* ]]; then
     IPADDR="$IPADDR_RAW/24"
   else
     IPADDR="$IPADDR_RAW"
   fi
 
-  # 檢查 IP 是否已被使用
-  CHECK_IP=$(echo $IPADDR | cut -d/ -f1)
-  echo "🔍 檢查 IP 是否已存在：$CHECK_IP..."
-  if ping -c 2 -W 1 "$CHECK_IP" > /dev/null; then
-      echo "❌ 該 IP 位址已被使用，請選擇其他 IP！"
-      return 1
-  else
-      echo "✅ 該 IP 尚未被使用，可安全設定。"
+  # 分離純 IP 部分
+  CHECK_IP=$(echo "$IPADDR" | cut -d/ -f1)
+
+  # 格式合法性檢查
+  if ! is_valid_ip "$CHECK_IP"; then
+    echo "❌ 輸入的 IP [$CHECK_IP] 格式錯誤或超出範圍（每段 0~255）"
+    return 1
   fi
 
-  read -p "請輸入閘道（Gateway，例如：192.168.25.1，可空白預設為第一段 .1）: " GATEWAY
+  # 偵測目前 Gateway
+  GATEWAY=$(ip route | awk '/default/ {print $3}')
   if [[ -z "$GATEWAY" ]]; then
-    GATEWAY="$(echo $CHECK_IP | awk -F. '{print $1"."$2"."$3".1"}')"
-    echo "📌 使用預設閘道：$GATEWAY"
+    echo "❌ 無法偵測預設 Gateway，請確認系統路由表。"
+    return 1
   fi
 
-  read -p "請輸入 DNS（預設為 168.95.1.1 8.8.8.8 1.1.1.1，可空白或逗號）: " DNS
+  # 檢查是否同網段
+  IP_PREFIX=$(echo "$CHECK_IP" | awk -F. '{print $1"."$2"."$3}')
+  GW_PREFIX=$(echo "$GATEWAY" | awk -F. '{print $1"."$2"."$3}')
+  if [[ "$IP_PREFIX" != "$GW_PREFIX" ]]; then
+    echo "⚠️ IP（$CHECK_IP）與 Gateway（$GATEWAY）不在同網段，請檢查"
+    return 1
+  fi
+
+  # 提示合法 IP 範圍（依 Gateway 值）
+  GATEWAY_LAST=$(echo "$GATEWAY" | awk -F. '{print $4}')
+  if [[ "$GATEWAY_LAST" == "1" ]]; then
+    echo "📌 Gateway 為 $GATEWAY，建議可用 IP：$IP_PREFIX.2 ~ $IP_PREFIX.254"
+  elif [[ "$GATEWAY_LAST" == "254" ]]; then
+    echo "📌 Gateway 為 $GATEWAY，建議可用 IP：$IP_PREFIX.1 ~ $IP_PREFIX.253"
+  else
+    echo "📌 Gateway 為 $GATEWAY，請自行確認 IP 可用範圍"
+  fi
+
+  # 檢查 IP 是否已被佔用
+  echo "🔍 檢查 IP 是否已被使用：$CHECK_IP"
+  if ping -c 2 -W 1 "$CHECK_IP" &>/dev/null; then
+    echo "❌ 該 IP 位址已被使用，請選擇其他 IP。"
+    return 1
+  else
+    echo "✅ 該 IP 尚未被使用，可安全設定。"
+  fi
+
+  # DNS 輸入與防呆處理
+  read -p "請輸入 DNS（預設為 168.95.1.1 8.8.8.8 1.1.1.1，可空白）: " DNS
+  DNS=$(echo "$DNS" | xargs)  # 移除空白
   if [[ -z "$DNS" ]]; then
     DNS="168.95.1.1,8.8.8.8,1.1.1.1"
   else
     DNS=$(echo "$DNS" | tr ' ' ',')
   fi
 
-  echo "建立 netplan 設定檔（使用 routes 替代 gateway4）..."
-  cat <<EOF > /etc/netplan/50-cloud-init.yaml
+  # 產生 netplan 設定檔
+  echo "📝 寫入 netplan 設定檔：/etc/netplan/50-cloud-init.yaml"
+  cat <<EOF | sudo tee /etc/netplan/50-cloud-init.yaml > /dev/null
 network:
   version: 2
   ethernets:
@@ -87,16 +138,17 @@ network:
           via: $GATEWAY
 EOF
 
-  chmod 600 /etc/netplan/50-cloud-init.yaml
-
-  echo "套用 netplan 設定..."
-  netplan apply
-  if [ $? -ne 0 ]; then
-      echo "⚠️ IP 設定失敗，請檢查網卡名稱或其他設定。"
-      return 1
+  sudo chmod 600 /etc/netplan/50-cloud-init.yaml
+  echo "⚙️ 套用 netplan 設定..."
+  if sudo netplan apply; then
+    echo "✅ IP 設定完成：$IPADDR ➝ Gateway: $GATEWAY"
+    echo "📡 目前介面狀態："
+    ip -4 addr show "$IFACE"
+    ip route
+  else
+    echo "⚠️ IP 設定失敗，請確認參數或檔案格式。"
+    return 1
   fi
-  echo "✅ IP 設定完成。"
-
 }
 
 # 功能 2 ：防火牆設定
@@ -585,13 +637,75 @@ set_timezone_and_network() {
   fi
   echo "✅ IPv6 關閉完成。"
 }
+
+# 功能9 :修改hosts與hostname
+set_hostname_and_hosts() {
+  echo "🔧 當前主機名稱為：$(hostnamectl --static)"
+  read -p "請輸入新的主機名稱（僅限英文、數字與 dash）: " NEW_HOSTNAME
+
+  # 清理與合法性檢查
+  NEW_HOSTNAME=$(echo "$NEW_HOSTNAME" | xargs)
+  if [[ -z "$NEW_HOSTNAME" || ! "$NEW_HOSTNAME" =~ ^[a-zA-Z0-9-]+$ ]]; then
+    echo "❌ 無效的主機名稱，請僅使用 a-z、A-Z、0-9、-"
+    return 1
+  fi
+
+  OLD_HOSTNAME=$(hostnamectl --static)
+
+  echo "📝 設定新主機名稱為：$NEW_HOSTNAME"
+  sudo hostnamectl set-hostname "$NEW_HOSTNAME"
+
+  echo "🧹 更新 /etc/hosts 中的主機對應..."
+
+  # 備份原本 hosts
+  sudo cp /etc/hosts /etc/hosts.bak.$(date +%F-%H%M%S)
+
+  # 刪除所有 127.0.1.1 對應行（避免重複）
+  sudo sed -i '/^127\.0\.1\.1/d' /etc/hosts
+
+  # 插入新對應在 127.0.0.1 之後
+  sudo awk -v newhost="$NEW_HOSTNAME" '
+    /^127\.0\.0\.1/ {
+      print
+      print "127.0.1.1\t" newhost
+      next
+    }
+    { print }
+  ' /etc/hosts | sudo tee /etc/hosts.tmp > /dev/null && sudo mv /etc/hosts.tmp /etc/hosts
+
+  echo "✅ 主機名稱與 hosts 更新完成"
+  echo ""
+  echo "🖥️ 當前主機名稱：$(hostname)"
+  echo "📄 /etc/hosts 最後幾行如下："
+  tail -n 6 /etc/hosts
+}
+
+# 功能 10：安裝proxmox qemu guest agent
+install_qemu_guest_agent() {
+  echo "📦 安裝 QEMU Guest Agent"
+
+  if ! command -v qemu-ga &>/dev/null; then
+    sudo apt update
+    sudo apt install -y qemu-guest-agent
+    echo "✅ QEMU Guest Agent 已安裝完成"
+  else
+    echo "✔ 已安裝 QEMU Guest Agent"
+  fi
+
+  echo "🔧 啟用並啟動服務..."
+  sudo systemctl enable --now qemu-guest-agent
+
+  echo "✅ 狀態如下："
+  systemctl status qemu-guest-agent --no-pager
+}
+
 # 主選單
 while true; do
     clear
     get_firewall_status
     echo "==== 運維 Deploy 工具 ===="
     echo -e "防火牆狀態：$FIREWALL_STATUS\n"
-    echo "1. 設定IP （靜態IP + 閘道 + DNS）"
+    echo "1. 設定靜態 IP（自動網卡/Gateway/IP 檢查）"
     echo "2. 防火牆設定（執行 firewall_toolkit）"
     echo "3. 安裝 Docker + Docker Compose"
     echo "4. SSH 免密登入設定"
@@ -599,6 +713,8 @@ while true; do
     echo "6. 效能優化（swappiness/ZRAM/CPU/BBR）"
     echo "7. 儲存系統優化（TRIM + I/O Scheduler）"
     echo "8. 設定時區+關閉 IPv6"
+    echo "9. 修改主機名稱與 hosts"
+    echo "10. 安裝 Proxmox QEMU Guest Agent"
     echo "0. 離開"
     echo "=========================="
     read -p "請選擇操作項目: " choice
@@ -612,6 +728,8 @@ while true; do
         6) system_optimize; read -p "按 Enter 鍵返回主選單..." ;;
         7) optimize_storage; read -p "按 Enter 鍵返回主選單..." ;;
         8) set_timezone_and_network; read -p "按 Enter 鍵返回主選單..." ;;
+        9) set_hostname_and_hosts; read -p "按 Enter 鍵返回主選單..." ;;
+        10) install_qemu_guest_agent; read -p "按 Enter 鍵返回主選單..." ;;
         0) echo "離開腳本。"; break ;;
         *) echo "無效選項，請重新輸入。"; sleep 2 ;;
     esac
