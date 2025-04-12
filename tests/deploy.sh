@@ -1,5 +1,24 @@
 #!/bin/bash
 
+while true; do
+    clear
+    echo '
+    ┌────────────────────────────────────────┐
+    │       ███████   ██        ██████       │
+    │       ██        ██        ██           │
+    │       █████     ██        ██████       │
+    │       ██        ██        ██           │
+    │       ███████   ███████   ██           │
+    │                                        │
+    │                                        │
+    │                Deploy Tool             │
+    ├────────────────────────────────────────┤
+    │ 🚀 ELF 運維工具選單                     
+    ├────────────────────────────────────────┤
+...
+'
+    read -p "請選擇操作項目: " choice
+    ...
 # 顯示目前防火牆的狀態
 get_firewall_status() {
   if command -v firewall-cmd &>/dev/null; then
@@ -413,36 +432,110 @@ docker_setup_and_install() {
 }
 
 # 功能 4：SSH 免密登入
-setup_ssh_key_inline() {
-    echo "==== SSH 免密登入設定 ===="
+setup_ssh_tools_menu() {
+    while true; do
+        clear
+        echo "====== SSH 免密登入工具選單 ======"
+        echo "1) 本機啟用 root 密碼登入"
+        echo "2) 遠端開啟 root 密碼登入（使用 elf + sudo）"
+        echo "3) 傳送 SSH 公鑰給 root"
+        echo "0) 返回主選單"
+        echo "==================================="
+        read -p "請選擇操作項目: " ssh_opt
+        case "$ssh_opt" in
+            1) enable_root_login_local ;;
+            2) enable_root_login_via_sudo ;;
+            3) send_pubkey_to_root ;;
+            0) break ;;
+            *) echo "❗ 無效選項，請重新輸入。" && read -p "按 Enter 鍵繼續..." ;;
+        esac
+    done
+}
 
-    if [ ! -f ~/.ssh/id_rsa ]; then
-        echo "尚未偵測到 SSH 金鑰，正在建立..."
-        ssh-keygen -t rsa -b 4096 -C "deploy@$(hostname)" -f ~/.ssh/id_rsa -N ""
-        echo "SSH 金鑰已建立完成。"
-    else
-        echo "已偵測到 SSH 金鑰，略過建立步驟。"
+# 功能 4.1：本機啟用 root 密碼登入
+enable_root_login_local() {
+    echo "🖥️ 在本機啟用 root SSH 密碼登入功能"
+
+    SSH_CONFIG="/etc/ssh/sshd_config"
+    if [[ ! -f "$SSH_CONFIG" ]]; then
+        echo "❌ 找不到 sshd 設定檔：$SSH_CONFIG"
+        read -p "按 Enter 返回 SSH 工具選單..."
+        return 1
     fi
 
-    read -p "請輸入遠端主機 IP（可輸入多個，以逗號分隔）: " HOST_INPUT
-    IFS=',' read -ra HOSTS <<< "$HOST_INPUT"
+    BACKUP_FILE="${SSH_CONFIG}.bak.$(date +%F-%H%M%S)"
+    echo "📝 備份 sshd_config ➜ $BACKUP_FILE"
+    sudo cp "$SSH_CONFIG" "$BACKUP_FILE"
 
-    read -p "請輸入遠端主機使用者帳號（例如 root）: " SSH_USER
-    read -p "請輸入 SSH Port（預設為 22）: " SSH_PORT
-    SSH_PORT=${SSH_PORT:-22}
+    echo "🔧 修改 sshd_config 設定..."
+    sudo sed -i 's/^#*PermitRootLogin.*/PermitRootLogin yes/' "$SSH_CONFIG"
+    sudo sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication yes/' "$SSH_CONFIG"
 
-    for HOST in "${HOSTS[@]}"; do
-        echo "傳送公鑰到 $SSH_USER@$HOST:$SSH_PORT ..."
-        ssh-copy-id -p "$SSH_PORT" "$SSH_USER@$HOST"
-        if [ $? -eq 0 ]; then
-            echo "✅ $HOST 設定完成。"
-        else
-            echo "⚠️ $HOST 設定失敗，請檢查登入資訊或網路連線。"
-        fi
-        echo "-----------------------------"
-    done
+    echo "🔄 重新啟動 sshd 服務..."
+    if sudo systemctl restart sshd; then
+        echo "✅ sshd 重啟成功"
+    else
+        echo "❌ sshd 重啟失敗！請立即手動檢查設定，避免被鎖住遠端登入"
+        read -p "按 Enter 返回 SSH 工具選單..."
+        return 1
+    fi
 
-    echo "所有主機處理完成。"
+    echo ""
+    echo "🔑 請設定 root 密碼（若已設定則可略過）"
+    sudo passwd root
+
+    echo ""
+    echo "✅ root 密碼登入已啟用"
+    echo "📌 提醒：可從其他機器用 ssh root@<本機IP> 登入"
+    read -p "按 Enter 返回 SSH 工具選單..."
+}
+
+
+# 功能 4.2：遠端開啟 root 密碼登入（使用 elf + sudo）
+
+enable_root_login_via_sudo() {
+    read -p "請輸入目標主機 IP：" TARGET_IP
+    read -p "請輸入可登入的帳號（預設 elf）：" ALT_USER
+    ALT_USER="${ALT_USER:-elf}"
+    read -sp "請輸入 ${ALT_USER}@${TARGET_IP} 密碼：" USER_PASS
+    echo ""
+
+    if ! command -v sshpass >/dev/null 2>&1; then
+        sudo apt update && sudo apt install -y sshpass
+    fi
+
+    echo "🔧 修改 sshd_config 開啟 root 登入中..."
+    sshpass -p "$USER_PASS" ssh -o StrictHostKeyChecking=no ${ALT_USER}@${TARGET_IP} bash -c "'
+        echo \"$USER_PASS\" | sudo -S bash -c \"
+            sed -i.bak -e \\\"/^#*PermitRootLogin/cPermitRootLogin yes\\\" \\
+                       -e \\\"/^#*PasswordAuthentication/cPasswordAuthentication yes\\\" /etc/ssh/sshd_config
+            systemctl restart sshd
+        \"
+    '"
+    echo "✅ root 密碼登入已啟用（請接續使用功能 3 傳送金鑰）"
+    read -p "按 Enter 返回 SSH 工具選單..."
+}
+
+# 功能 4.3：傳送 SSH 公鑰給 root
+send_pubkey_to_root() {
+    read -p "請輸入目標主機 IP：" TARGET_IP
+    read -sp "請輸入 root 密碼：" ROOT_PASS
+    echo ""
+
+    if ! command -v sshpass >/dev/null 2>&1; then
+        sudo apt update && sudo apt install -y sshpass
+    fi
+
+    if [[ ! -f ~/.ssh/id_rsa.pub ]]; then
+        echo "🔐 尚未有 SSH 金鑰，正在建立..."
+        ssh-keygen -t rsa -b 4096 -N "" -f ~/.ssh/id_rsa
+    fi
+
+    echo "📤 傳送 SSH 公鑰到 root@${TARGET_IP}..."
+    sshpass -p "$ROOT_PASS" ssh-copy-id -o StrictHostKeyChecking=no root@$TARGET_IP
+
+    echo "✅ 傳送完成，測試免密登入： ssh root@${TARGET_IP}"
+    read -p "按 Enter 返回 SSH 工具選單..."
 }
 
 # 功能 5：清除系統垃圾與排程清理任務
@@ -487,9 +580,9 @@ clean_system() {
     echo "🗓️ 已加入排程任務：$CRON_JOB"
 }
 
-# 功能6.效能優化（swappiness/ZRAM/CPU/BBR）
+# 功能6.效能最佳化
 system_optimize() {
-  echo "🚀 開始 VM 專用系統效能與穩定性優化..."
+  echo "🚀 開始 VM 專用系統效能與穩定性最佳化..."
 
 # 1. 調整 swappiness（降低 swap 頻率）
 echo "🧠 調整 vm.swappiness 為 10..."
@@ -536,19 +629,15 @@ echo "🕓 確認 cron 與 logrotate 服務啟動中..."
 sudo systemctl enable --now cron
 sudo systemctl enable --now logrotate.timer
 
-# 7. 顯示當前系統記憶體與核心優化參數
+# 7. 顯示當前系統記憶體與核心最佳化參數
 echo ""
-echo "📊 驗證系統優化參數："
+echo "📊 驗證系統最佳化參數："
 sysctl vm.swappiness
 sysctl net.ipv4.tcp_congestion_control
 echo ""
-echo "✅ VM 系統優化作業完成（建議重啟機器後再次確認）"
-}
+echo "✅ VM 系統最佳化作業完成（建議重啟機器後再次確認）"
 
-
-# 功能7.儲存系統優化（TRIM + I/O Scheduler）
-optimize_storage() {
-  echo "🚀 儲存系統優化作業開始..."
+  echo "🚀 儲存系統最佳化作業開始..."
 
   echo "🔍 檢查是否為虛擬機..."
   is_vm="false"
@@ -556,7 +645,7 @@ optimize_storage() {
       is_vm="true"
       echo "✅ 偵測為虛擬機，僅啟用 TRIM（略過 I/O 調度器設定）"
   else
-      echo "✅ 偵測為實體機，執行完整優化（TRIM + I/O 調度器）"
+      echo "✅ 偵測為實體機，執行完整最佳化（TRIM + I/O 調度器）"
   fi
 
   echo "🔧 啟用 fstrim.timer..."
@@ -603,7 +692,30 @@ optimize_storage() {
       echo "  $dev : $sched"
   done
 
-  echo "✅ 儲存系統優化作業完成！"
+  echo "✅ 儲存系統最佳化作業完成！"
+}
+
+# 功能 7：安裝常用套件
+root_login() {
+    echo "🔧 在本機啟用 root 密碼登入 SSH 功能"
+
+    SSH_CONFIG="/etc/ssh/sshd_config"
+
+    # 備份設定檔
+    sudo cp "$SSH_CONFIG" "${SSH_CONFIG}.bak.$(date +%F-%H%M%S)"
+
+    # 修改設定
+    sudo sed -i 's/^#*PermitRootLogin.*/PermitRootLogin yes/' "$SSH_CONFIG"
+    sudo sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication yes/' "$SSH_CONFIG"
+
+    # 重啟 sshd
+    echo "🔄 重新啟動 SSH 服務..."
+    sudo systemctl restart sshd
+
+    echo "✅ 本機 root 密碼登入已啟用。"
+    echo "📢 請確認你設定 root 密碼"
+    sudo passwd root
+    read -p "完成設定按 Enter 鍵返回主選單..."
 }
 
 # 功能 8：設定時區+關閉 IPv6
@@ -708,10 +820,10 @@ while true; do
     echo "1. 設定靜態 IP（自動網卡/Gateway/IP 檢查）"
     echo "2. 防火牆設定（執行 firewall_toolkit）"
     echo "3. 安裝 Docker + Docker Compose"
-    echo "4. SSH 免密登入設定"
+    echo "4. SSH 免密登入工具"
     echo "5. 系統垃圾清理 + 排程設定"
-    echo "6. 效能優化（swappiness/ZRAM/CPU/BBR）"
-    echo "7. 儲存系統優化（TRIM + I/O Scheduler）"
+    echo "6. 效能最佳化（swappiness/ZRAM/CPU/BBR）"
+    echo "7. 本機啟用 root 密碼登入 SSH"
     echo "8. 設定時區+關閉 IPv6"
     echo "9. 修改主機名稱與 hosts"
     echo "10. 安裝 Proxmox QEMU Guest Agent"
@@ -723,10 +835,10 @@ while true; do
         1) set_ip; read -p "按 Enter 鍵返回主選單..." ;;
         2) firewall_toolkit; read -p "按 Enter 鍵返回主選單..." ;;
         3) docker_setup_and_install; read -p "按 Enter 鍵返回主選單..." ;;
-        4) setup_ssh_key_inline; read -p "按 Enter 鍵返回主選單..." ;;
+        4) setup_ssh_tools_menu "按 Enter 鍵返回主選單..." ;;           
         5) clean_system; read -p "按 Enter 鍵返回主選單..." ;;
         6) system_optimize; read -p "按 Enter 鍵返回主選單..." ;;
-        7) optimize_storage; read -p "按 Enter 鍵返回主選單..." ;;
+        7) root_login; read -p "按 Enter 鍵返回主選單..." ;;
         8) set_timezone_and_network; read -p "按 Enter 鍵返回主選單..." ;;
         9) set_hostname_and_hosts; read -p "按 Enter 鍵返回主選單..." ;;
         10) install_qemu_guest_agent; read -p "按 Enter 鍵返回主選單..." ;;
