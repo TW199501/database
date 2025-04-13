@@ -1,24 +1,5 @@
 #!/bin/bash
 
-while true; do
-    clear
-    echo '
-    ┌────────────────────────────────────────┐
-    │       ███████   ██        ██████       │
-    │       ██        ██        ██           │
-    │       █████     ██        ██████       │
-    │       ██        ██        ██           │
-    │       ███████   ███████   ██           │
-    │                                        │
-    │                                        │
-    │                Deploy Tool             │
-    ├────────────────────────────────────────┤
-    │ 🚀 ELF 運維工具選單                     
-    ├────────────────────────────────────────┤
-...
-'
-    read -p "請選擇操作項目: " choice
-    ...
 # 顯示目前防火牆的狀態
 get_firewall_status() {
   if command -v firewall-cmd &>/dev/null; then
@@ -811,38 +792,47 @@ install_qemu_guest_agent() {
   systemctl status qemu-guest-agent --no-pager
 }
 
-# 主選單
 while true; do
-    clear
-    get_firewall_status
-    echo "==== 運維 Deploy 工具 ===="
-    echo -e "防火牆狀態：$FIREWALL_STATUS\n"
-    echo "1. 設定靜態 IP（自動網卡/Gateway/IP 檢查）"
-    echo "2. 防火牆設定（執行 firewall_toolkit）"
-    echo "3. 安裝 Docker + Docker Compose"
-    echo "4. SSH 免密登入工具"
-    echo "5. 系統垃圾清理 + 排程設定"
-    echo "6. 效能最佳化（swappiness/ZRAM/CPU/BBR）"
-    echo "7. 本機啟用 root 密碼登入 SSH"
-    echo "8. 設定時區+關閉 IPv6"
-    echo "9. 修改主機名稱與 hosts"
-    echo "10. 安裝 Proxmox QEMU Guest Agent"
-    echo "0. 離開"
-    echo "=========================="
-    read -p "請選擇操作項目: " choice
+  clear
+  get_firewall_status
+  echo "
 
-    case $choice in
-        1) set_ip; read -p "按 Enter 鍵返回主選單..." ;;
-        2) firewall_toolkit; read -p "按 Enter 鍵返回主選單..." ;;
-        3) docker_setup_and_install; read -p "按 Enter 鍵返回主選單..." ;;
-        4) setup_ssh_tools_menu "按 Enter 鍵返回主選單..." ;;           
-        5) clean_system; read -p "按 Enter 鍵返回主選單..." ;;
-        6) system_optimize; read -p "按 Enter 鍵返回主選單..." ;;
-        7) root_login; read -p "按 Enter 鍵返回主選單..." ;;
-        8) set_timezone_and_network; read -p "按 Enter 鍵返回主選單..." ;;
-        9) set_hostname_and_hosts; read -p "按 Enter 鍵返回主選單..." ;;
-        10) install_qemu_guest_agent; read -p "按 Enter 鍵返回主選單..." ;;
-        0) echo "離開腳本。"; break ;;
-        *) echo "無效選項，請重新輸入。"; sleep 2 ;;
-    esac
+      ███████   ██        ██████
+      ██        ██        ██
+      █████     ██        ██████
+      ██        ██        ██
+      ███████   ███████   ██
+
+      防火牆狀態：$FIREWALL_STATUS
+      運維工具選單
+
+      1. 設定靜態 IP
+      2. 防火牆設定
+      3. 安裝 Docker + Docker Compose
+      4. SSH 免密登入工具
+      5. 系統垃圾清理 + 排程設定
+      6. 效能最佳化
+      7. 本機啟用 root 密碼登入 SSH
+      8. 設定時區+關閉 IPv6
+      9. 修改主機名稱與 hosts
+      10. 安裝 Proxmox QEMU Guest Agent
+      0. 離開
+  "
+
+  read -p       "請選擇操作項目: " choice
+
+  case $choice in
+    1) set_ip; read -p "按 Enter 鍵返回主選單..." ;;
+    2) firewall_toolkit; read -p "按 Enter 鍵返回主選單..." ;;
+    3) docker_setup_and_install; read -p "按 Enter 鍵返回主選單..." ;;
+    4) setup_ssh_tools_menu; read -p "按 Enter 鍵返回主選單..." ;;
+    5) clean_system; read -p "按 Enter 鍵返回主選單..." ;;
+    6) system_optimize; read -p "按 Enter 鍵返回主選單..." ;;
+    7) root_login; read -p "按 Enter 鍵返回主選單..." ;;
+    8) set_timezone_and_network; read -p "按 Enter 鍵返回主選單..." ;;
+    9) set_hostname_and_hosts; read -p "按 Enter 鍵返回主選單..." ;;
+    10) install_qemu_guest_agent; read -p "按 Enter 鍵返回主選單..." ;;
+    0) echo "離開腳本。"; break ;;
+    *) echo "無效選項，請重新輸入。"; sleep 2 ;;
+  esac
 done
