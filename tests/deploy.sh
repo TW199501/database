@@ -672,11 +672,10 @@ echo "✅ VM 系統最佳化作業完成（建議重啟機器後再次確認）"
       sched=$(cat "$devpath")
       echo "  $dev : $sched"
   done
-
   echo "✅ 儲存系統最佳化作業完成！"
 }
 
-# 功能 7：安裝常用套件
+# 功能 7：本機啟用 root 密碼登入
 root_login() {
     echo "🔧 在本機啟用 root 密碼登入 SSH 功能"
 
@@ -692,7 +691,6 @@ root_login() {
     # 重啟 sshd
     echo "🔄 重新啟動 SSH 服務..."
     sudo systemctl restart sshd
-
     echo "✅ 本機 root 密碼登入已啟用。"
     echo "📢 請確認你設定 root 密碼"
     sudo passwd root
@@ -812,8 +810,8 @@ while true; do
       4. SSH 免密登入工具
       5. 系統垃圾清理 + 排程設定
       6. 效能最佳化
-      7. 本機啟用 root 密碼登入 SSH
-      8. 設定時區+關閉 IPv6
+      7. 本機啟用 root 密碼登入
+      8. 設定時區 + 關閉 IPv6
       9. 修改主機名稱與 hosts
       10. 安裝 Proxmox QEMU Guest Agent
       0. 離開
