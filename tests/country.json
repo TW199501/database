@@ -1,0 +1,220 @@
+[
+    {
+    "geoname_id": 49518,
+    "locale_code": "zh-CN",
+    "continent_code": "AF",
+    "continent_name": "非洲",
+    "country_iso_code": "RW",
+    "country_name": "盧安達",
+    "is_in_european_union": 0
+    },
+    {
+    "geoname_id": 51537,
+    "locale_code": "zh-CN",
+    "continent_code": "AF",
+    "continent_name": "非洲",
+    "country_iso_code": "SO",
+    "country_name": "索馬利亞",
+    "is_in_european_union": 0
+    },
+    {
+    "geoname_id": 69543,
+    "locale_code": "zh-CN",
+    "continent_code": "AS",
+    "continent_name": "亞洲",
+    "country_iso_code": "YE",
+    "country_name": "也門",
+    "is_in_european_union": 0
+    },
+    {
+    "geoname_id": 99237,
+    "locale_code": "zh-CN",
+    "continent_code": "AS",
+    "continent_name": "亞洲",
+    "country_iso_code": "IQ",
+    "country_name": "伊拉克",
+    "is_in_european_union": 0
+    },
+    {
+    "geoname_id": 102358,
+    "locale_code": "zh-CN",
+    "continent_code": "AS",
+    "continent_name": "亞洲",
+    "country_iso_code": "SA",
+    "country_name": "沙烏地阿拉伯",
+    "is_in_european_union": 0
+    },
+    {
+    "geoname_id": 130758,
+    "locale_code": "zh-CN",
+    "continent_code": "AS",
+    "continent_name": "亞洲",
+    "country_iso_code": "IR",
+    "country_name": "伊朗",
+    "is_in_european_union": 0
+    },
+    {
+    "geoname_id": 146669,
+    "locale_code": "zh-CN",
+    "continent_code": "EU",
+    "continent_name": "歐洲",
+    "country_iso_code": "CY",
+    "country_name": "塞浦路斯",
+    "is_in_european_union": 1
+    },
+    {
+    "geoname_id": 149590,
+    "locale_code": "zh-CN",
+    "continent_code": "AF",
+    "continent_name": "非洲",
+    "country_iso_code": "TZ",
+    "country_name": "坦尚尼亞",
+    "is_in_european_union": 0
+    },
+    {
+    "geoname_id": 163843,
+    "locale_code": "zh-CN",
+    "continent_code": "AS",
+    "continent_name": "亞洲",
+    "country_iso_code": "SY",
+    "country_name": "敘利亞",
+    "is_in_european_union": 0
+    },
+    {
+    "geoname_id": 174982,
+    "locale_code": "zh-CN",
+    "continent_code": "AS",
+    "continent_name": "亞洲",
+    "country_iso_code": "AM",
+    "country_name": "亞美尼亞",
+    "is_in_european_union": 0
+    },
+    {
+    "geoname_id": 192950,
+    "locale_code": "zh-CN",
+    "continent_code": "AF",
+    "continent_name": "非洲",
+    "country_iso_code": "KE",
+    "country_name": "肯亞",
+    "is_in_european_union": 0
+    },
+    {
+    "geoname_id": 203312,
+    "locale_code": "zh-CN",
+    "continent_code": "AF",
+    "continent_name": "非洲",
+    "country_iso_code": "CD",
+    "country_name": "扎伊爾",
+    "is_in_european_union": 0
+    },
+    {
+    "geoname_id": 223816,
+    "locale_code": "zh-CN",
+    "continent_code": "AF",
+    "continent_name": "非洲",
+    "country_iso_code": "DJ",
+    "country_name": "吉布地",
+    "is_in_european_union": 0
+    },
+    {
+    "geoname_id": 226074,
+    "locale_code": "zh-CN",
+    "continent_code": "AF",
+    "continent_name": "非洲",
+    "country_iso_code": "UG",
+    "country_name": "烏干達",
+    "is_in_european_union": 0
+    },
+    {
+    "geoname_id": 239880,
+    "locale_code": "zh-CN",
+    "continent_code": "AF",
+    "continent_name": "非洲",
+    "country_iso_code": "CF",
+    "country_name": "中非",
+    "is_in_european_union": 0
+    },
+    {
+    "geoname_id": 241170,
+    "locale_code": "zh-CN",
+    "continent_code": "AF",
+    "continent_name": "非洲",
+    "country_iso_code": "SC",
+    "country_name": "塞席爾",
+    "is_in_european_union": 0
+    },
+    {
+    "geoname_id": 248816,
+    "locale_code": "zh-CN",
+    "continent_code": "AS",
+    "continent_name": "亞洲",
+    "country_iso_code": "JO",
+    "country_name": "約旦",
+    "is_in_european_union": 0
+    },
+    {
+    "geoname_id": 272103,
+    "locale_code": "zh-CN",
+    "continent_code": "AS",
+    "continent_name": "亞洲",
+    "country_iso_code": "LB",
+    "country_name": "黎巴嫩",
+    "is_in_european_union": 0
+    },
+    {
+    "geoname_id": 285570,
+    "locale_code": "zh-CN",
+    "continent_code": "AS",
+    "continent_name": "亞洲",
+    "country_iso_code": "KW",
+    "country_name": "科威特",
+    "is_in_european_union": 0
+    },
+    {
+    "geoname_id": 286963,
+    "locale_code": "zh-CN",
+    "continent_code": "AS",
+    "continent_name": "亞洲",
+    "country_iso_code": "OM",
+    "country_name": "阿曼",
+    "is_in_european_union": 0
+    },
+    {
+    "geoname_id": 289688,
+    "locale_code": "zh-CN",
+    "continent_code": "AS",
+    "continent_name": "亞洲",
+    "country_iso_code": "QA",
+    "country_name": "卡達",
+    "is_in_european_union": 0
+    },
+    {
+    "geoname_id": 290291,
+    "locale_code": "zh-CN",
+    "continent_code": "AS",
+    "continent_name": "亞洲",
+    "country_iso_code": "BH",
+    "country_name": "巴林",
+    "is_in_european_union": 0
+    },
+    {
+    "geoname_id": 290557,
+    "locale_code": "zh-CN",
+    "continent_code": "AS",
+    "continent_name": "亞洲",
+    "country_iso_code": "AE",
+    "country_name": "阿聯酋",
+    "is_in_european_union": 0
+    },
+    {
+    "geoname_id": 294640,
+    "locale_code": "zh-CN",
+    "continent_code": "AS",
+    "continent_name": "亞洲",
+    "country_iso_code": "IL",
+    "country_name": "以色列",
+    "is_in_european_union": 0
+    },
+    {
+    "geoname_id": 298795,
+    "locale_code": "zh-CN",
