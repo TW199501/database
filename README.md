@@ -129,6 +129,9 @@ GO
 │   │   └── 📁 ddl/
 │   │       ├── 01_create_package.sql
 │   │       └── 02_create_package_entry.sql
+├── 📁 template/
+│   ├── job_template_v2.sql
+│   └── sp_template.sql
 
 ```
 
