@@ -17,4 +17,20 @@ CREATE TABLE dbo.customer_profile (
 );
 GO
 
+-- =============================================
+-- 名稱：ALTER TABLE customer_profile 加入統一編號欄位
+-- 說明：補上統一編號欄位 uniform_number，供前端註冊輸入
+-- =============================================
+ALTER TABLE dbo.customer_profile
+ADD uniform_number NVARCHAR(20) NULL;
+GO
+
+-- ✅ 加上欄位說明
+EXEC sys.sp_addextendedproperty
+    @name = N'MS_Description',
+    @value = N'統一編號',
+    @level0type = N'SCHEMA', @level0name = 'dbo',
+    @level1type = N'TABLE',  @level1name = 'customer_profile',
+    @level2type = N'COLUMN', @level2name = 'uniform_number';
+
 -- 建立 customer_login_log 表（登入紀錄）
